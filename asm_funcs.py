@@ -24,11 +24,12 @@ class Assembler:
         self.emitlabel("section .bss")
         self.emitcode("write_intDigitSpace resb 100")
         self.emitcode("write_intDigitSpacePos resb 8")
+        self.emitcode("write_minusSign resb 2")
+        self.emitcode("write_CRLF resb 2")
 
     def setup_data(self):
-        self.emitlabel("section .data")
-        self.emitcode('CRLF db 10,0')
-        self.emitcode('minusSign db "-"')
+        pass
+        # self.emitlabel("section .data")
 
     def setup_text(self):
         self.emitlabel("section .text")
@@ -36,6 +37,24 @@ class Assembler:
 
     def setup_start(self):
         self.emitlabel("_start:")
+        # need to set these constants.  When I used section .data, the issue was that they would somehow
+        # get overwritten
+        self.emitcode("; define minus sign - ascii 45 + ascii 0")
+        self.emitcode("mov rcx, write_minusSign")
+        self.emitcode("mov rbx, 45")
+        self.emitcode("mov [rcx], rbx")
+        self.emitcode("inc rcx")
+        self.emitcode("mov rbx, 0")
+        self.emitcode("mov [rcx], rbx")
+        self.emitcode("; define CRLF - ascii 10 + ascii 0")
+        self.emitcode("mov rcx, write_CRLF")
+        self.emitcode("mov rbx, 10")
+        self.emitcode("mov [rcx], rbx")
+        self.emitcode("inc rcx")
+        self.emitcode("mov rbx, 0")
+        self.emitcode("mov [rcx], rbx")
+
+
 
     def emit_terminate(self):
         self.emitcode("mov rax,60")
@@ -43,7 +62,7 @@ class Assembler:
         self.emitcode("syscall")
 
     def emit_writeINT(self):
-        self.emitlabel("_writeINT:\t\t;int to be written must be in rax") # todo figure out how to preserve RAX if it is negative
+        self.emitlabel("_writeINT:\t\t;int to be written must be in rax. rax is clobbered")
         self.emitlabel("; source = https://www.youtube.com/watch?v=XuUD0WQ9kaE - modified to do negatives")
         self.emitcode("cmp rax, 0")
         self.emitcode("jge .doneSigned")
@@ -51,7 +70,7 @@ class Assembler:
         self.emitcode("push rax")
         self.emitcode("mov rax, 1")
         self.emitcode("mov rdi, 1")
-        self.emitcode("mov rsi, minusSign")
+        self.emitcode("mov rsi, write_minusSign")
         self.emitcode("mov rdx, 19")
         self.emitcode("syscall")
         self.emitcode("pop rax")
@@ -92,7 +111,7 @@ class Assembler:
         self.emitlabel("_writeCRLF:")
         self.emitcode("mov rax, 1")
         self.emitcode("mov rdi, 1")
-        self.emitcode("mov rsi, CRLF")
+        self.emitcode("mov rsi, write_CRLF")
         self.emitcode("mov rdx, 1")
         self.emitcode("syscall")
         self.emitcode("ret")
@@ -104,14 +123,6 @@ class Assembler:
         self.emit_writeINT()
         self.emit_writeSTR()
         self.emit_writeCRLF()
-
-class ASTAssembler:
-    def __init__(self, AST, assembler):
-        self.AST = AST
-        self.assembler = assembler
-
-    def assemble(self):
-        pass
 
 class Compiler:
     def __init__(self, asm_filename, obj_filename):

@@ -4,9 +4,9 @@ Goal is to eventually build a compiler for a subset of Pascal.  Compiler is writ
 
 ### Current Status:
 
-The program currently generates x86 assembly to compute the result of a single mathematical expression with all arguments being integers.  Addition, subtraction, multiplication, and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The generated x86 assembly wthen displays the result of the evaluation of the expression to stdout.  
+The program currently generates x86 assembly to compute the result of a single mathematical expression with all arguments being integers.  Addition, subtraction, multiplication, and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The generated x86 assembly wthen displays the result of the evaluation of the expression to stdout.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
 
-Under the covers, the program first creates an Abstract Syntax Tree (AST) from the expression, then generates the assembly code from the AST.  Currently, the AST knows how to generate its own assembly code.  I plan to create a new class that will accept an AST and generate the assembly.
+Under the covers, the program first creates an Abstract Syntax Tree (AST) from the expression, then generates the assembly code from the AST.  Currently, the AST knows how to generate its own assembly code even though that overloads that class a bit, because it's easier to generate it recursively from within a single function.
 
 ### To run it:
 

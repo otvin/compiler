@@ -249,7 +249,7 @@ class Parser:
 
 def main():
 
-	t = Tokenizer("-2* -7")
+	t = Tokenizer("-2* 7")
 	p = Parser(t)
 	p.parse()
 	p.assemble("test.asm")
