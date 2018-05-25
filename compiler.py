@@ -8,21 +8,27 @@ TOKEN_MULT = 3
 TOKEN_IDIV = 4
 TOKEN_LPAREN = 5
 TOKEN_RPAREN = 6
+TOKEN_WRITELN = 7
+TOKEN_BEGIN = 8
+TOKEN_END = 9
+TOKEN_SEMICOLON = 10
 
 # hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT','+','-','*','/','(',')']
+DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', 'WRITELN', 'BEGIN', 'END', ';']
+
 
 # helper functions
 def isSymbol(char):
-	if char in ["-","+","(",")","*","/"]:
+	if char in ["-", "+", "(", ")", "*", "/", ";"]:
 		return True
 	else:
 		return False
 
 
-# grammar for now is just evaluating the expression
+# grammar for now
 
-
+# compound statement ::= begin <statement> [; <statement>]*
+# statement ::= writeln(<expression>
 # expression ::= <term> [ <addop> <term>]*
 # term ::= <factor> [ <multop> <factor>]*
 # factor ::== <integer> | <lparen> <expression> <rparen>
@@ -35,7 +41,7 @@ class Token:
 		self.value = value
 
 	def debugprint(self):
-		return(DEBUG_TOKENDISPLAY[self.type] + ":" + str(self.value))
+		return (DEBUG_TOKENDISPLAY[self.type] + ":" + str(self.value))
 
 
 class AST():
@@ -95,6 +101,14 @@ class AST():
 			assembler.emitcode("POP RAX")
 			assembler.emitcode("XOR RDX, RDX")  # RDX is concatenated with RAX to do division
 			assembler.emitcode("IDIV RCX")
+		elif self.token.type == TOKEN_WRITELN:
+			self.children[0].assemble(assembler)  # the expression should be in RAX
+			assembler.emitcode("call _writeINT")
+			assembler.emitcode("call _writeCRLF")
+		elif self.token.type == TOKEN_BEGIN:
+			for child in self.children:
+				child.assemble(assembler)
+
 		else:
 			raise ValueError("Unexpected Token")
 
@@ -126,10 +140,11 @@ class Tokenizer:
 				retVal += self.eat()
 			return retVal
 		else:
-			raise ValueError("Identifiers must begin with alpha character")  # todo - error should indicate what was seen
+			raise ValueError(
+				"Identifiers must begin with alpha character")  # todo - error should indicate what was seen
 
 	def getNumber(self):
-		if self.peek().isdigit(): # todo - handle floats
+		if self.peek().isdigit():  # todo - handle floats
 			retval = self.eat()
 			while self.peek().isdigit():
 				retval += self.eat()
@@ -138,17 +153,28 @@ class Tokenizer:
 			raise ValueError("Numbers must be numeric")
 
 	def getSymbol(self):
-		if isSymbol(self.peek()): # todo - handle multi-character symbols
+		if isSymbol(self.peek()):  # todo - handle multi-character symbols
 			return self.eat()
 		else:
 			raise ValueError("Symbol Expected")
 
-	def getNextToken(self):
+	def getNextToken(self, requiredtokentype=None):
+		# if the next Token must be of a certain type, passing that type in
+		# will lead to validation.
+
 		if self.curPos > self.length:
 			return None
 		else:
 			if self.peek().isalpha():
-				raise ValueError("Cannot handle identifiers yet")
+				ident = self.getIdentifier().lower()
+				if ident == "begin":
+					ret = Token(TOKEN_BEGIN, None)
+				elif ident == "end":
+					ret = Token(TOKEN_END, None)
+				elif ident == "writeln":
+					ret = Token(TOKEN_WRITELN, None)
+				else:
+					raise ValueError("Unrecognized Token: " + ident)
 			elif self.peek().isdigit():
 				ret = Token(TOKEN_INT, self.getNumber())
 			elif isSymbol(self.peek()):
@@ -165,17 +191,24 @@ class Tokenizer:
 					ret = Token(TOKEN_LPAREN, None)
 				elif sym == ")":
 					ret = Token(TOKEN_RPAREN, None)
+				elif sym == ";":
+					ret = Token(TOKEN_SEMICOLON, None)
 				else:
-					raise ValueError ("Unrecognized Token: " + sym)
+					raise ValueError("Unrecognized Token: " + sym)
 
 			while self.peek().isspace():
 				self.eat()
+
+			if not (requiredtokentype is None):
+				if ret.type != requiredtokentype:
+					raise ValueError(
+						"Expected " + DEBUG_TOKENDISPLAY[requiredtokentype] + ", got " + DEBUG_TOKENDISPLAY[ret.type])
+
 			return ret
 
 
-
 class Parser:
-	def __init__ (self, tokenizer):
+	def __init__(self, tokenizer):
 		self.tokenizer = tokenizer
 		self.AST = None
 		self.asssembler = None
@@ -190,48 +223,66 @@ class Parser:
 			if self.tokenizer.peek() != ")":
 				raise ValueError("Right Paren expected")
 			rparen = self.tokenizer.getNextToken()
-			return(ret)
+			return (ret)
 		else:
-			multby = 1 # will set this negative if it's a negative number
+			multby = 1  # will set this negative if it's a negative number
 			factor = self.tokenizer.getNextToken()
 			if factor.type == TOKEN_MINUS:
 				multby = -1
 				factor = self.tokenizer.getNextToken()
 			if factor.type != TOKEN_INT:
-				raise ValueError ("Integer expected")
+				raise ValueError("Integer expected")
 			factor.value = factor.value * multby
 			return AST(factor)
 
 	def parseTerm(self):
 		# term ::= <factor> [ <multop> <factor>]*
 		ret = self.parseFactor()
-		while self.tokenizer.peek() in ["*","/"]:
+		while self.tokenizer.peek() in ["*", "/"]:
 			multdiv = AST(self.tokenizer.getNextToken())
 			multdiv.children.append(ret)
 			multdiv.children.append(self.parseFactor())
 			ret = multdiv
 		return ret
 
-
 	def parseExpression(self):
 		# expression ::= <term> [ <addop> <term>]*
 		ret = self.parseTerm()
-		while self.tokenizer.peek() in ['+','-']:
+		while self.tokenizer.peek() in ['+', '-']:
 			addsub = AST(self.tokenizer.getNextToken())
 			addsub.children.append(ret)
 			addsub.children.append(self.parseTerm())
 			ret = addsub
 		return ret
 
+
+	def parseStatement(self):
+		# statement ::= writeln(<expression>)
+		writeln = self.tokenizer.getNextToken(TOKEN_WRITELN)
+		lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+		expression = self.parseExpression()
+		rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+		ret = AST(writeln)
+		ret.children.append(expression)
+		return ret
+
+	def parseCompoundStatement(self):
+		# compound statement ::= begin <statement> [; <statement>]*
+		ret = AST(self.tokenizer.getNextToken(TOKEN_BEGIN))
+		statement = self.parseStatement()
+		ret.children.append(statement)
+		while self.tokenizer.peek() == ";":
+			semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+			statement = self.parseStatement()
+			ret.children.append(statement)
+		return ret
+
+
 	def parse(self):
-		self.AST = self.parseExpression()
+		self.AST = self.parseCompoundStatement()
 
 	def assembleAST(self):
-		# self.assembler.emitcode("mov rax, 42")
 		self.AST.assemble(self.assembler)
-
-		self.assembler.emitcode("call _writeINT")
-		self.assembler.emitcode("call _writeCRLF")
 
 	def assemble(self, filename):
 		self.assembler = asm_funcs.Assembler(filename)
@@ -248,25 +299,21 @@ class Parser:
 
 
 def main():
-
-	t = Tokenizer("-2* 7")
+	t = Tokenizer("begin writeln(18+7);writeln(8*(7+1));writeln(45-3);writeln(5-9) end")
 	p = Parser(t)
+
+	print("Parsing...")
 	p.parse()
+	print("Done.\nAssembling...")
 	p.assemble("test.asm")
-	# p.AST.rpn_print()
-
-	# print (p.AST.interpret())
-
-	c = asm_funcs.Compiler("test.asm","test.o")
+	print("Done.\nCompiling...")
+	c = asm_funcs.Compiler("test.asm", "test.o")
 	c.do_compile()
-	l = asm_funcs.Linker("test.o","test")
+	print("Done.\nLinking...")
+	l = asm_funcs.Linker("test.o", "test")
 	l.do_link()
-
-	print("\n\n\n")
-
-
+	print("Done.\n")
 
 
 if __name__ == '__main__':
 	main()
-
