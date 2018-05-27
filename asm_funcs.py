@@ -4,6 +4,9 @@ import os
 class Assembler:
 	def __init__(self, asm_filename):
 		self.asm_file = open(asm_filename, 'w')
+		self.string_literals = {}
+		self.next_data_name = 0
+		self.next_label = 0
 
 	def emit(self, s):
 		self.asm_file.write(s)
@@ -20,6 +23,12 @@ class Assembler:
 	def cleanup(self):
 		self.asm_file.close()
 
+	def generate_data_name(self, prefix):
+		ret = 'fredpascal' + prefix + str(self.next_data_name)
+		self.next_data_name += 1
+		return ret
+
+
 	def setup_bss(self):
 		self.emitlabel("section .bss")
 		self.emitcode("write_intDigitSpace resb 100")
@@ -28,8 +37,11 @@ class Assembler:
 		self.emitcode("write_CRLF resb 2")
 
 	def setup_data(self):
-		pass
-		# self.emitlabel("section .data")
+		if len(self.string_literals.keys()) > 0:
+			self.emitlabel("section .data")
+			for key in self.string_literals.keys():
+				self.emitcode(self.string_literals[key] + ' db "' + key + '",0')  # null-terminate everything even if nasm doesn't require
+				self.emitcode(self.string_literals[key] + 'Len equ $-' + self.string_literals[key])
 
 	def setup_text(self):
 		self.emitlabel("section .text")
@@ -61,7 +73,7 @@ class Assembler:
 
 	def emit_writeINT(self):
 		self.emitlabel("_writeINT:\t\t;int to be written must be in rax. rax is clobbered")
-		self.emitlabel("; source = https://www.youtube.com/watch?v=XuUD0WQ9kaE - modified to do negatives")
+		self.emitlabel("\t; source = https://www.youtube.com/watch?v=XuUD0WQ9kaE - modified to do negatives")
 		self.emitcode("cmp rax, 0")
 		self.emitcode("jge .doneSigned")
 		self.emitcode("; need to print the minus sign and negate RAX")

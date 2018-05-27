@@ -18,9 +18,10 @@ TOKEN_END = 11
 TOKEN_WRITELN = 12
 TOKEN_WRITE = 13
 
+TOKEN_STRING = 14
 
 # hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', 'PROGRAM', 'BEGIN', 'END', 'WRITELN', 'WRITE']
+DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', 'PROGRAM', 'BEGIN', 'END', 'WRITELN', 'WRITE', 'STRING']
 
 
 # helper functions
@@ -35,12 +36,14 @@ def isSymbol(char):
 
 # program ::= program <identifier>; <compound statement>.
 # compound statement ::= begin <statement> [; <statement>]* end
-# statement ::= writeln(<expression>) | write(<expression>)
+# statement ::= <printstatement>
+# printstatement ::= [write | writeln]  (<expression> | <stringliteral>)
 # expression ::= <term> [ <addop> <term>]*
 # term ::= <factor> [ <multop> <factor>]*
-# factor ::== <integer> | <lparen> <expression> <rparen>
-# addop = + | -
-# multop = * | /
+# factor ::= <integer> | <lparen> <expression> <rparen>
+# addop ::= + | -
+# multop ::= * | /
+# stringliteral ::= '<string>'      ; NOTE - cannot handle " inside a string yet.
 
 class Token:
 	def __init__(self, type, value):
@@ -60,6 +63,15 @@ class AST():
 		for x in self.children:
 			x.rpn_print()
 		print(self.token.debugprint())
+
+	def find_string_literals(self, assembler):
+		if self.token.type == TOKEN_STRING:
+			if not (self.token.value in assembler.string_literals):
+				assembler.string_literals[self.token.value] = assembler.generate_data_name('string')
+		else:
+			for child in self.children:
+				child.find_string_literals(assembler)
+
 
 	def assemble(self, assembler):
 		if self.token.type == TOKEN_INT:
@@ -94,13 +106,23 @@ class AST():
 			assembler.emitcode("POP RAX")
 			assembler.emitcode("XOR RDX, RDX")  # RDX is concatenated with RAX to do division
 			assembler.emitcode("IDIV RCX")
-		elif self.token.type == TOKEN_WRITELN:
-			self.children[0].assemble(assembler)  # the expression should be in RAX
-			assembler.emitcode("call _writeINT")
-			assembler.emitcode("call _writeCRLF")
-		elif self.token.type == TOKEN_WRITE:
-			self.children[0].assemble(assembler)
-			assembler.emitcode("call _writeINT")
+		elif self.token.type == TOKEN_WRITELN or self.token.type == TOKEN_WRITE:
+			for child in self.children:
+				if child.token.type == TOKEN_STRING:
+					if not (child.token.value in assembler.string_literals):
+						raise ValueError ("No literal for string :" + child.token.value)
+					else:
+						data_name = assembler.string_literals[child.token.value]
+						assembler.emitcode("mov rax, 1")
+						assembler.emitcode("mov rdi, 1")
+						assembler.emitcode("mov rsi, " + data_name)
+						assembler.emitcode("mov rdx, " + data_name + "Len")
+						assembler.emitcode("syscall")
+				else:
+					child.assemble(assembler)  # the expression should be in RAX
+					assembler.emitcode("call _writeINT")
+			if self.token.type == TOKEN_WRITELN:
+				assembler.emitcode("call _writeCRLF")
 		elif self.token.type == TOKEN_BEGIN:
 			for child in self.children:
 				child.assemble(assembler)
@@ -149,6 +171,21 @@ class Tokenizer:
 		else:
 			raise ValueError("Numbers must be numeric")
 
+	def getQuotedString(self):
+		if self.peek() != "'":
+			raise ValueError("Strings must begin with an apostrophe.")
+		self.eat()
+		ret = ""
+		while self.peek() != "'":
+			if self.peek() == '"':
+				raise ValueError("Cannot handle quotes inside strings yet")
+			elif self.peek() == "":
+				raise ValueError("End of input reached inside quoted string")
+			ret += self.eat()
+		self.eat()
+		return ret
+
+
 	def getSymbol(self):
 		if isSymbol(self.peek()):  # todo - handle multi-character symbols
 			return self.eat()
@@ -181,6 +218,8 @@ class Tokenizer:
 					raise ValueError("Unrecognized Token: " + ident)
 			elif self.peek().isdigit():
 				ret = Token(TOKEN_INT, self.getNumber())
+			elif self.peek() == "'":
+				ret = Token(TOKEN_STRING, self.getQuotedString())
 			elif isSymbol(self.peek()):
 				sym = self.getSymbol()
 				if sym == "+":
@@ -263,14 +302,20 @@ class Parser:
 
 
 	def parseStatement(self):
-		# statement ::= writeln(<expression>) | write(<expression>)
+		# statement ::= <printstatement>
+		# printstatement ::= [write | writeln]  (<expression> | <stringliteral>)
 		tok = self.tokenizer.getNextToken()
+
 		if tok.type == TOKEN_WRITELN or tok.type == TOKEN_WRITE:
 			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
-			expression = self.parseExpression()
+			if self.tokenizer.peek() == "'":
+				tobeprinted = AST(self.tokenizer.getNextToken(TOKEN_STRING))
+			else:
+				tobeprinted = self.parseExpression()
 			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+
 			ret = AST(tok)
-			ret.children.append(expression)
+			ret.children.append(tobeprinted)
 		else:
 			raise ValueError("Unexpected Statement: " + DEBUG_TOKENDISPLAY[tok.type])
 
@@ -311,6 +356,8 @@ class Parser:
 
 	def assemble(self, filename):
 		self.assembler = asm_funcs.Assembler(filename)
+		self.AST.find_string_literals(self.assembler)
+
 		self.assembler.setup_bss()
 		self.assembler.setup_data()
 		self.assembler.setup_text()
