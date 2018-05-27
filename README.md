@@ -31,7 +31,7 @@ Create a pascal file, then run ```python3 compiler.py {your file name}```.  Exam
 
 ### Known bugs:
 
-None
+When redirecting the output of executables to a file, string literals will pipe to the file, but integers printed to stdout will not.  This occurs even if both stdout and stderr are redirected to the file.
 
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.
