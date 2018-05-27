@@ -1,3 +1,4 @@
+import sys
 import asm_funcs
 
 # constants for token types
@@ -8,18 +9,23 @@ TOKEN_MULT = 3
 TOKEN_IDIV = 4
 TOKEN_LPAREN = 5
 TOKEN_RPAREN = 6
-TOKEN_WRITELN = 7
-TOKEN_BEGIN = 8
-TOKEN_END = 9
-TOKEN_SEMICOLON = 10
+TOKEN_SEMICOLON = 8
+TOKEN_PERIOD = 8
+
+TOKEN_PROGRAM = 9
+TOKEN_BEGIN = 10
+TOKEN_END = 11
+TOKEN_WRITELN = 12
+TOKEN_WRITE = 13
+
 
 # hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', 'WRITELN', 'BEGIN', 'END', ';']
+DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', 'PROGRAM', 'BEGIN', 'END', 'WRITELN', 'WRITE']
 
 
 # helper functions
 def isSymbol(char):
-	if char in ["-", "+", "(", ")", "*", "/", ";"]:
+	if char in ["-", "+", "(", ")", "*", "/", ";", "."]:
 		return True
 	else:
 		return False
@@ -27,8 +33,9 @@ def isSymbol(char):
 
 # grammar for now
 
-# compound statement ::= begin <statement> [; <statement>]*
-# statement ::= writeln(<expression>
+# program ::= program <identifier>; <compound statement>.
+# compound statement ::= begin <statement> [; <statement>]* end
+# statement ::= writeln(<expression>) | write(<expression>)
 # expression ::= <term> [ <addop> <term>]*
 # term ::= <factor> [ <multop> <factor>]*
 # factor ::== <integer> | <lparen> <expression> <rparen>
@@ -53,20 +60,6 @@ class AST():
 		for x in self.children:
 			x.rpn_print()
 		print(self.token.debugprint())
-
-	def interpret(self):
-		if self.token.type == TOKEN_INT:
-			return self.token.value
-		elif self.token.type == TOKEN_PLUS:
-			return self.children[0].interpret() + self.children[1].interpret()
-		elif self.token.type == TOKEN_MINUS:
-			return self.children[0].interpret() - self.children[1].interpret()
-		elif self.token.type == TOKEN_MULT:
-			return self.children[0].interpret() * self.children[1].interpret()
-		elif self.token.type == TOKEN_IDIV:
-			return self.children[0].interpret() // self.children[1].interpret()
-		else:
-			raise ValueError("Unexpected Token")
 
 	def assemble(self, assembler):
 		if self.token.type == TOKEN_INT:
@@ -105,10 +98,14 @@ class AST():
 			self.children[0].assemble(assembler)  # the expression should be in RAX
 			assembler.emitcode("call _writeINT")
 			assembler.emitcode("call _writeCRLF")
+		elif self.token.type == TOKEN_WRITE:
+			self.children[0].assemble(assembler)
+			assembler.emitcode("call _writeINT")
 		elif self.token.type == TOKEN_BEGIN:
 			for child in self.children:
 				child.assemble(assembler)
-
+		elif self.token.type == TOKEN_PROGRAM:
+			self.children[0].assemble(assembler)
 		else:
 			raise ValueError("Unexpected Token")
 
@@ -162,8 +159,11 @@ class Tokenizer:
 		# if the next Token must be of a certain type, passing that type in
 		# will lead to validation.
 
-		if self.curPos > self.length:
-			return None
+		if self.curPos >= self.length:
+			errstr = ""
+			if not (requiredtokentype is None):
+				errstr = "Expected " + DEBUG_TOKENDISPLAY[requiredtokentype]
+			raise ValueError("Unexpected end of input. " + errstr)
 		else:
 			if self.peek().isalpha():
 				ident = self.getIdentifier().lower()
@@ -173,6 +173,10 @@ class Tokenizer:
 					ret = Token(TOKEN_END, None)
 				elif ident == "writeln":
 					ret = Token(TOKEN_WRITELN, None)
+				elif ident == "write":
+					ret = Token(TOKEN_WRITE, None)
+				elif ident == "program":
+					ret = Token(TOKEN_PROGRAM, None)
 				else:
 					raise ValueError("Unrecognized Token: " + ident)
 			elif self.peek().isdigit():
@@ -193,6 +197,8 @@ class Tokenizer:
 					ret = Token(TOKEN_RPAREN, None)
 				elif sym == ";":
 					ret = Token(TOKEN_SEMICOLON, None)
+				elif sym == ".":
+					ret = Token(TOKEN_PERIOD, None)
 				else:
 					raise ValueError("Unrecognized Token: " + sym)
 
@@ -257,17 +263,21 @@ class Parser:
 
 
 	def parseStatement(self):
-		# statement ::= writeln(<expression>)
-		writeln = self.tokenizer.getNextToken(TOKEN_WRITELN)
-		lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
-		expression = self.parseExpression()
-		rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
-		ret = AST(writeln)
-		ret.children.append(expression)
+		# statement ::= writeln(<expression>) | write(<expression>)
+		tok = self.tokenizer.getNextToken()
+		if tok.type == TOKEN_WRITELN or tok.type == TOKEN_WRITE:
+			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+			expression = self.parseExpression()
+			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+			ret = AST(tok)
+			ret.children.append(expression)
+		else:
+			raise ValueError("Unexpected Statement: " + DEBUG_TOKENDISPLAY[tok.type])
+
 		return ret
 
 	def parseCompoundStatement(self):
-		# compound statement ::= begin <statement> [; <statement>]*
+		# compound statement ::= begin <statement> [; <statement>]* end
 		ret = AST(self.tokenizer.getNextToken(TOKEN_BEGIN))
 		statement = self.parseStatement()
 		ret.children.append(statement)
@@ -275,11 +285,26 @@ class Parser:
 			semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 			statement = self.parseStatement()
 			ret.children.append(statement)
+		end = self.tokenizer.getNextToken(TOKEN_END)
 		return ret
 
 
+	def parseProgram(self):
+		# program ::= program <identifier>; <compound statement>.
+		ret = AST(self.tokenizer.getNextToken(TOKEN_PROGRAM))
+		ret.token.value = self.tokenizer.getIdentifier()
+		semi = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+		compound_statement = self.parseCompoundStatement()
+		period = self.tokenizer.getNextToken(TOKEN_PERIOD)
+		if self.tokenizer.peek() != "":
+			raise ValueError("Unexpected character after period " + self.tokenizer.peek())
+
+		ret.children.append(compound_statement)
+
+		return ret
+
 	def parse(self):
-		self.AST = self.parseCompoundStatement()
+		self.AST = self.parseProgram()
 
 	def assembleAST(self):
 		self.AST.assemble(self.assembler)
@@ -299,18 +324,38 @@ class Parser:
 
 
 def main():
-	t = Tokenizer("begin writeln(18+7);writeln(8*(7+1));writeln(45-3);writeln(5-9) end")
+	if len(sys.argv) < 2:
+		print("Usage: python3 compiler.py [filename]")
+		sys.exit()
+
+	infilename = sys.argv[1]
+	if infilename[-4:].lower() == ".pas":
+		assemblyfilename = infilename[:-4] + ".asm"
+		objectfilename = infilename[:-4] + ".o"
+		exefilename = infilename[:-4]
+	else:
+		assemblyfilename = infilename + ".asm"
+		objectfilename = infilename + ".o"
+		exefilename = infilename + ".exe"
+
+
+	f = open(infilename,"r")
+	t = Tokenizer(f.read())
+	f.close()
+
+	print (t.text)
+
 	p = Parser(t)
 
 	print("Parsing...")
 	p.parse()
 	print("Done.\nAssembling...")
-	p.assemble("test.asm")
+	p.assemble(assemblyfilename)
 	print("Done.\nCompiling...")
-	c = asm_funcs.Compiler("test.asm", "test.o")
+	c = asm_funcs.Compiler(assemblyfilename, objectfilename)
 	c.do_compile()
 	print("Done.\nLinking...")
-	l = asm_funcs.Linker("test.o", "test")
+	l = asm_funcs.Linker(objectfilename, exefilename)
 	l.do_link()
 	print("Done.\n")
 

@@ -69,13 +69,16 @@ class Assembler:
 		self.emitcode("mov rax, 1")
 		self.emitcode("mov rdi, 1")
 		self.emitcode("mov rsi, write_minusSign")
-		self.emitcode("mov rdx, 19")
+		self.emitcode("mov rdx, 1")
 		self.emitcode("syscall")
 		self.emitcode("pop rax")
 		self.emitcode("neg rax")
 
 		self.emitlabel(".doneSigned:")
 		self.emitcode("mov rcx, write_intDigitSpace")
+		self.emitcode("xor rbx, rbx")  # put a zero here - null-terminate the string
+		self.emitcode("mov [rcx], rbx")
+		self.emitcode("inc rcx")
 		self.emitcode("mov [write_intDigitSpacePos], rcx")
 		self.emitlabel(".writeINTLoop:")
 		self.emitcode("mov rdx, 0\t\t;because rdx gets concatenated onto rax when calling div")
