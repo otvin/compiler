@@ -42,20 +42,39 @@ def isSymbol(char):
 
 
 # grammar for now - in a pseudo BNF format
+# Modified from http://www.fit.vutbr.cz/study/courses/APR/public/ebnf.html
+# curly braces mean zero or more repetitions
+# brackets mean zero or one repetition - in other words, an optional construct.
+# parentheses are used for grouping - exactly one of the items in the group is chosen
+# vertical bar means a choice of one from many
+# literal text is included in quotations marks
 
-# program ::= program <identifier>; <variable declarations> <compound statement>.
-# compound statement ::= begin <statement> [; <statement>]* end
-# statement ::= <printstatement> | <variable assignment>
-# printstatement ::= [write | writeln]  (<expression> | <stringliteral>)
-# expression ::= <term> [ <addop> <term>]*
-# term ::= <factor> [ <multop> <factor>]*
-# factor ::= <0 or 1 minus signs> <integer> | <variable identifier> | <lparen> <expression> <rparen>
-# addop ::= + | -
-# multop ::= * | /
-# stringliteral ::= '<string>'      ; NOTE - cannot handle " inside a string yet.  Cannot escape apostrophes yet.
-# variable declarations ::= <empty> | [var <identifier> : <variable type>;]*
-# variable type ::= Integer
-# variable assigment ::= <variable identifier> := <expression>
+# program ::= <program heading> <block> "."
+# program heading ::= "program" <identifier> ";"
+# block ::= [<declaration part>] <statement part>
+# declaration part ::= <variable declaration part>     # Fred note - only handling variables at this point
+# variable declaration part ::= "var" <variable declaration> ";" {<variable declaration> ";"}
+# variable declaration ::= <identifier> ":" <type>     # Fred note - only handling one identifier at a time, not a sequence
+# <type> ::= "integer"                                 # Fred note - only handling integers at this point
+# <statement part> ::= "begin" <statement sequence> "end"
+# <statement sequence> ::= <statement> {";" <statement>}
+# <statement> ::= <simple statement>                   # Fred note - not handling labels or structured statements yet
+# <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
+# <assignment statement> ::= <variable identifier> ":=" <expression>
+# <print statement> ::= ("write" | "writeln") "(" (<expression> | <string literal>) ")"
+# <expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
+# <term> ::= <factor> { <multiplication operator> <factor> }
+# <factor> ::= <integer> | <variable identifier> | "(" <expression> ")"
+
+# <string literal> = "'" {<any character other than apostrophe or quote mark>} "'"
+# <variable identifier> ::= <identifier>
+# <identifier> ::= <letter> {<letter> | <digit>}
+# <integer> ::= ["-"] <digit> {<digit>}
+# <letter> ::= "A" .. "Z" || "a" .. "z"
+# <digit> ::= "0" .. "9"
+# <addition operator> ::= "+" | "-"
+# <multiplication operator> ::= "*" | "/"
+
 
 class Token:
 	def __init__(self, type, value):
@@ -206,6 +225,7 @@ class Tokenizer:
 			return retChar
 
 	def getIdentifier(self):
+		# <identifier> ::= <letter> {<letter> | <digit>}
 		if self.peek().isalpha():
 			retVal = self.eat()
 			while self.peek().isalnum():
@@ -215,6 +235,7 @@ class Tokenizer:
 			self.raiseTokenizeError("Identifiers must begin with alpha character")
 
 	def getNumber(self):
+		# <integer> ::= ["-"] <digit> {<digit>}
 		if self.peek().isdigit():  # todo - handle floats
 			retval = self.eat()
 			while self.peek().isdigit():
@@ -223,7 +244,8 @@ class Tokenizer:
 		else:
 			self.raiseTokenizeError("Numbers must be numeric")
 
-	def getQuotedString(self):
+	def getStringLiteral(self):
+		# <string literal> = "'" {<any character other than apostrophe or quote mark>} "'"
 		if self.peek() != "'":
 			self.raiseTokenizeError("Strings must begin with an apostrophe.")
 		self.eat()
@@ -290,7 +312,7 @@ class Tokenizer:
 			elif self.peek().isdigit():
 				ret = Token(TOKEN_INT, self.getNumber())
 			elif self.peek() == "'":
-				ret = Token(TOKEN_STRING, self.getQuotedString())
+				ret = Token(TOKEN_STRING, self.getStringLiteral())
 			elif isSymbol(self.peek()):
 				sym = self.getSymbol()
 				# multi-character symbols we support will be
@@ -353,7 +375,8 @@ class Parser:
 
 
 	def parseFactor(self):
-		# factor ::= <0 or 1 minus signs> <integer> | <variable identifier> | <lparen> <expression> <rparen>
+		# <factor> ::= <integer> | <variable identifier> | "(" <expression> ")"
+		# <integer> ::= ["-"] <digit> {<digit>}
 		if self.tokenizer.peek() == "(":
 			# parens do not go in the AST
 			lparen = self.tokenizer.getNextToken()
@@ -380,7 +403,7 @@ class Parser:
 			return AST(factor)
 
 	def parseTerm(self):
-		# term ::= <factor> [ <multop> <factor>]*
+		# <term> ::= <factor> { <multiplication operator> <factor> }
 		ret = self.parseFactor()
 		while self.tokenizer.peek() in ["*", "/"]:
 			multdiv = AST(self.tokenizer.getNextToken())
@@ -390,7 +413,7 @@ class Parser:
 		return ret
 
 	def parseExpression(self):
-		# expression ::= <term> [ <addop> <term>]*
+		# <expression> ::= <term> { <addition operator> <term> }
 		ret = self.parseTerm()
 		while self.tokenizer.peek() in ['+', '-']:
 			addsub = AST(self.tokenizer.getNextToken())
@@ -400,9 +423,10 @@ class Parser:
 		return ret
 
 	def parseStatement(self):
-		# statement ::= <printstatement> | <variable assignment>
-		# printstatement ::= [write | writeln]  (<expression> | <stringliteral>)
-		# variable assigment ::= <variable identifier> := <expression>
+		# <statement> ::= <simple statement>                   # Fred note - not handling labels or structured statements yet
+		# <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
+		# <assignment statement> ::= <variable identifier> ":=" <expression>
+		# <print statement> ::= ("write" | "writeln") "(" (<expression> | <string literal>) ")"
 
 		tok = self.tokenizer.getNextToken()
 
@@ -427,8 +451,9 @@ class Parser:
 
 		return ret
 
-	def parseCompoundStatement(self):
-		# compound statement ::= begin <statement> [; <statement>]* end
+	def parseStatementPart(self):
+		# <statement part> ::= "begin" <statement sequence> "end"
+		# <statement sequence> ::= <statement> {";" <statement>}
 		ret = AST(self.tokenizer.getNextToken(TOKEN_BEGIN))
 		statement = self.parseStatement()
 		ret.children.append(statement)
@@ -440,41 +465,47 @@ class Parser:
 		return ret
 
 	def parseVariableDeclarations(self):
-		# variable declarations = <empty> | [var <identifier> : <variable type>;]*
-		# variable type = Integer
-		if self.tokenizer.peekMulti(3).lower() == 'var':
-			ret = AST(self.tokenizer.getNextToken(TOKEN_VAR))
-			done = False
-			while not done:
-				# we are done when the next 6 characters are BEGIN plus whitespace.
-				# there likely is a better way to do this
-				nextsix = self.tokenizer.peekMulti(6).lower()
-				if nextsix[0:5].lower() == 'begin' and nextsix[5].isspace():
-					done = True
-				else:
-					ident_token = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
-					colon_token = self.tokenizer.getNextToken(TOKEN_COLON)
-					type_token = self.tokenizer.getNextToken()
-					if type_token.type != TOKEN_VARIABLE_TYPE_INTEGER:
-						raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY[type_token.type])
-					semi_token = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+		# variable declaration part ::= "var" <variable declaration> ";" {<variable declaration> ";"}
+		# variable declaration = <identifier> ":" <type>       # Fred note - only handling one identifier at a time, not a sequence
+		# <type> ::= "integer"                                 # Fred note - only handling integers at this point
+		ret = AST(self.tokenizer.getNextToken(TOKEN_VAR))
+		done = False
+		while not done:
+			# I do not know how to recognize the end of the variable section without looking ahead
+			# to the next section, which is the <statement part>.  <statement part> starts with "begin".
+			# So, we are done when the next 6 characters are BEGIN plus whitespace.
+			# There likely is a better way to do this.
+			nextsix = self.tokenizer.peekMulti(6).lower()
+			if nextsix[0:5].lower() == 'begin' and nextsix[5].isspace():
+				done = True
+			else:
+				ident_token = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
+				colon_token = self.tokenizer.getNextToken(TOKEN_COLON)
+				type_token = self.tokenizer.getNextToken()
+				if type_token.type != TOKEN_VARIABLE_TYPE_INTEGER:
+					raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY[type_token.type])
+				semi_token = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
-					type_token.value = ident_token.value
-					ret.children.append(AST(type_token))
-		else:
-			ret = None
+				type_token.value = ident_token.value
+				ret.children.append(AST(type_token))
 
 		return ret
 
 	def parseProgram(self):
-		# program ::= program <identifier>; <variable declarations> <compound statement>.
+		# program ::= <program heading> <block> "."
+		# program heading ::= "program" <identifier> ";"
 		ret = AST(self.tokenizer.getNextToken(TOKEN_PROGRAM))
 		ret.token.value = self.tokenizer.getIdentifier()
 		semi = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
-		variable_declarations = self.parseVariableDeclarations()
+		# block ::= [<declaration part>] <statement part>
+		# declaration part ::= <variable declaration part>     # Fred note - only handling variables at this point
+		if self.tokenizer.peekMulti(3).lower() == 'var':
+			variable_declarations = self.parseVariableDeclarations()
+		else:
+			variable_declarations = None
 
-		compound_statement = self.parseCompoundStatement()
+		statementPart = self.parseStatementPart()
 		period = self.tokenizer.getNextToken(TOKEN_PERIOD)
 		if self.tokenizer.peek() != "":
 			raiseParseError("Unexpected character after period " + self.tokenizer.peek())
@@ -482,7 +513,7 @@ class Parser:
 		if not (variable_declarations is None):  # variable declarations are optional
 			ret.children.append(variable_declarations)
 
-		ret.children.append(compound_statement)
+		ret.children.append(statementPart)
 
 		return ret
 
