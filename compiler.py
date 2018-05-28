@@ -73,7 +73,7 @@ def isSymbol(char):
 # <letter> ::= "A" .. "Z" || "a" .. "z"
 # <digit> ::= "0" .. "9"
 # <addition operator> ::= "+" | "-"
-# <multiplication operator> ::= "*" | "/"
+# <multiplication operator> ::= "*" | "/" 
 
 
 class Token:
