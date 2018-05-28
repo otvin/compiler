@@ -254,6 +254,21 @@ class Tokenizer:
 				errstr = "Expected " + DEBUG_TOKENDISPLAY[requiredtokentype]
 			self.raiseTokenizeError("Unexpected end of input. " + errstr)
 		else:
+			# get rid of comments
+			if self.peek() == "{":
+				while self.peek() != "}":
+					if self.peek() == "\n":
+						self.line_number += 1
+						self.line_position += 1
+					self.eat()
+				self.eat() # eat the "}"
+				# get rid of any white space that follows comments
+				while self.peek().isspace():
+					if self.peek() == "\n":
+						self.line_number += 1
+						self.line_position = 1
+					self.eat()
+
 			if self.peek().isalpha():
 				ident = self.getIdentifier().lower()
 				if ident == "begin":
