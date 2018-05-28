@@ -5,8 +5,9 @@ class Assembler:
 	def __init__(self, asm_filename):
 		self.asm_file = open(asm_filename, 'w')
 		self.string_literals = {}
-		self.next_data_name = 0
-		self.next_label = 0
+		self.next_literal_index = 0
+		self.variable_symbol_table = {}
+		self.next_variable_index = 0
 
 	def emit(self, s):
 		self.asm_file.write(s)
@@ -23,11 +24,15 @@ class Assembler:
 	def cleanup(self):
 		self.asm_file.close()
 
-	def generate_data_name(self, prefix):
-		ret = 'fredpascal' + prefix + str(self.next_data_name)
-		self.next_data_name += 1
+	def generate_literal_name(self, prefix):
+		ret = 'fredliteral' + prefix + str(self.next_literal_index)
+		self.next_literal_index += 1
 		return ret
 
+	def generate_variable_name(self, prefix):
+		ret = 'fredvar' + prefix + str(self.next_variable_index)
+		self.next_variable_index += 1
+		return ret
 
 	def setup_bss(self):
 		self.emitlabel("section .bss")
@@ -35,6 +40,11 @@ class Assembler:
 		self.emitcode("write_intDigitSpacePos resb 8")
 		self.emitcode("write_minusSign resb 2")
 		self.emitcode("write_CRLF resb 2")
+
+		for key in self.variable_symbol_table.keys():
+			if self.variable_symbol_table[key][0] == "int":  #to-do use a constant instead of "int"
+				self.emitcode(self.variable_symbol_table[key][1] + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int
+
 
 	def setup_data(self):
 		if len(self.string_literals.keys()) > 0:
@@ -73,7 +83,7 @@ class Assembler:
 
 	def emit_writeINT(self):
 		self.emitlabel("_writeINT:\t\t;int to be written must be in rax. rax is clobbered")
-		self.emitlabel("\t; source = https://www.youtube.com/watch?v=XuUD0WQ9kaE - modified to do negatives")
+		# source = https://www.youtube.com/watch?v=XuUD0WQ9kaE - modified to do negatives
 		self.emitcode("cmp rax, 0")
 		self.emitcode("jge .doneSigned")
 		self.emitcode("; need to print the minus sign and negate RAX")
@@ -128,12 +138,8 @@ class Assembler:
 		self.emitcode("syscall")
 		self.emitcode("ret")
 
-	def emit_writeSTR(self):
-		pass
-
 	def emit_systemfunctions(self):
 		self.emit_writeINT()
-		self.emit_writeSTR()
 		self.emit_writeCRLF()
 
 
@@ -155,33 +161,4 @@ class Linker:
 		os.system("ld " + self.obj_filename + " -o " + self.exe_filename)
 
 
-def DEBUG_helloworld_test():
-	a = Assembler("mytest.asm")
 
-	a.emitlabel('section .data')
-	a.emitcode('text db "Hello, World!", 10')
-	a.emitln("")
-
-	a.emitlabel('section .text')
-	a.emitcode('global _start')
-	a.emitln("")
-
-	a.emitlabel('_start:')
-	a.emitlabel('mov rax, 1')
-	a.emitlabel('mov rdi, 1')
-	a.emitlabel('mov rsi, text')
-	a.emitlabel('mov rdx, 14')
-	a.emitlabel('syscall')
-	a.emitln("")
-
-	a.emitlabel('mov rax, 60')
-	a.emitlabel('mov rdi, 0')
-	a.emitlabel('syscall')
-
-	a.cleanup()
-
-	c = Compiler("mytest.asm", "mytest.o")
-	c.do_compile()
-
-	l = Linker("mytest.o", "mytest")
-	l.do_link()
