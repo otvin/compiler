@@ -22,14 +22,18 @@ variable declaration part ::= "var" <variable declaration> ";" {<variable declar
 variable declaration ::= <identifier> ":" <type>     # Fred note - only handling one identifier at a time, not a sequence
 <type> ::= "integer"                                 # Fred note - only handling integers at this point
 <statement part> ::= "begin" <statement sequence> "end"
+<compound statement> ::= "begin" <statement sequence> "end"  #Fred note - statement part == compound statement
 <statement sequence> ::= <statement> {";" <statement>}
-<statement> ::= <simple statement>                   # Fred note - not handling labels or structured statements yet
+<statement> ::= <simple statement> | <structured statement>
 <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
-<assignment statement> ::= <variable identifier> ":=" <expression>
-<print statement> ::= ("write" | "writeln") "(" (<expression> | <string literal>) ")"
-<expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
+<assignment statement> ::= <variable identifier> ":=" <simple expression>
+<print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
+<structured statement> ::= <compound statement> | <if statement>  # Fred note - not handling repetitive or with statements yet
+<if statement> ::= if <expression> then <statement>
+<expression> ::= <simple expression> [<relational operator> <simple expression>]
+<simple expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
 <term> ::= <factor> { <multiplication operator> <factor> }
-<factor> ::= <integer> | <variable identifier> | "(" <expression> ")"
+<factor> ::= <integer> | <variable identifier> | "(" <simple expression> ")"  # Fred note - official BNF allows <expression> here
 
 <string literal> = "'" {<any character other than apostrophe or quote mark>} "'"
 <variable identifier> ::= <identifier>
@@ -39,13 +43,12 @@ variable declaration ::= <identifier> ":" <type>     # Fred note - only handling
 <digit> ::= "0" .. "9"
 <addition operator> ::= "+" | "-"
 <multiplication operator> ::= "*" | "/"
-
+<relational operator> ::= "="                       # Fred note - only equals is handled at present
 ```
  
-In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements or variable assignments.  Each ```writeln()``` or ```write()``` will display the result of either a string literal, or a single mathematical expression with all arguments being integers or integer-typed variables.  Addition, subtraction, multiplication, and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
+In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements or variable assignments, or ```if/then``` statements.  The only valid conditional test for an ```if``` statement is equality.  After the then, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display the result of either a string literal, or a single mathematical expression with all arguments being integers or integer-typed variables.  Addition, subtraction, multiplication, and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
 
 The compiler will ignore comments between open and close curly braces ```{``` and ```}```, anywhere in the code.  So ``` 4 + {random comment} 2``` will evaluate to ```6```.
-
 
 Under the covers, the program first creates an Abstract Syntax Tree (AST) from the expression, then generates the assembly code from the AST.  Currently, the AST knows how to generate its own assembly code even though that overloads that class a bit, because it's easier to generate it recursively from within a single function if it's a member of that class.
 
@@ -53,10 +56,14 @@ Under the covers, the program first creates an Abstract Syntax Tree (AST) from t
 
 Create a pascal file, then run ```python3 compiler.py {your file name}```.  Example: for the included ```helloworld.pas``` you would call ```python3 compiler.py helloworld.pas```.  You can then execute ```./helloworld``` 
 
+### To run the test suite:
+
+Execute ```python3 compiler_test.py```
+
 
 ### Known bugs:
 
-When redirecting the output of executables to a file, string literals will pipe to the file, but integers printed to stdout will not.  This occurs even if both stdout and stderr are redirected to the file.
+Previously, when redirecting the output of executables to a file, string literals will pipe to the file, but integers printed to stdout will not.  This occurs even if both stdout and stderr are redirected to the file.  I fixed this by changing the integer print to use an included library nasm64, cited below.  Now, the bug is that if a ```write``` is called on either a string or number, that value will make it to stdout.  However, the next ```write``` or ```writeln``` statement will not, until a ```writeln``` is called.  That will flush something and subsequent strings will make it to the file.  This is truly bizarre.  Thus, the files in the compiler test suite do not exercise ```write```.
 
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.
@@ -69,3 +76,4 @@ x86_64 Linux Assembly Tutorials by "kupala" - https://www.youtube.com/watch?v=VQ
 
 I have referenced multiple BNF for Pascal but the one I settled on is here: http://www.fit.vutbr.cz/study/courses/APR/public/ebnf.html - I used this as the starting point and modified it for my grammar.
 
+The nasm64.asm file that I included was found here: https://forum.nasm.us/index.php?topic=2062.0 - the GPL license information is left intact in that file.

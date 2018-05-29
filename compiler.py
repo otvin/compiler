@@ -13,29 +13,40 @@ TOKEN_SEMICOLON = 7
 TOKEN_PERIOD = 8
 TOKEN_COLON = 9
 TOKEN_ASSIGNMENT_OPERATOR = 10
+TOKEN_RELOP_EQUALS = 11
+TOKEN_RELOP_GREATER = 12
+TOKEN_RELOP_LESS = 13
+TOKEN_RELOP_GREATEREQ = 14
+TOKEN_RELOP_LESSEQ = 15
 
-TOKEN_PROGRAM = 11
-TOKEN_BEGIN = 12
-TOKEN_END = 13
-TOKEN_VAR = 14
-TOKEN_WRITELN = 15
-TOKEN_WRITE = 16
+TOKEN_PROGRAM = 16
+TOKEN_BEGIN = 17
+TOKEN_END = 18
+TOKEN_VAR = 19
 
-TOKEN_STRING = 17
-TOKEN_VARIABLE_IDENTIFIER = 18
-TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 19
-TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 20
-TOKEN_VARIABLE_TYPE_INTEGER = 21
+TOKEN_WRITELN = 20
+TOKEN_WRITE = 21
+TOKEN_IF = 22
+TOKEN_THEN = 23
+TOKEN_ELSE = 24
+
+TOKEN_STRING = 25
+TOKEN_VARIABLE_IDENTIFIER = 26
+TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 27
+TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 28
+TOKEN_VARIABLE_TYPE_INTEGER = 29
 
 
 # hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ':=', 'PROGRAM', 'BEGIN', 'END', 'VAR', 'WRITELN', 'WRITE', 'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT',
-					  	'VARIABLE EVALUATION', 'VARIABLE TYPE Integer']
+DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ':=', '=', '>', '<', '>=', '<=',
+					  	'PROGRAM', 'BEGIN', 'END', 'VAR',
+					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE',
+					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer']
 
 
 # helper functions
 def isSymbol(char):
-	if char in ["-", "+", "(", ")", "*", "/", ";", ".", ":", "="]:
+	if char in ["-", "+", "(", ")", "*", "/", ";", ".", ":", "=", "<", ">"]:
 		return True
 	else:
 		return False
@@ -57,14 +68,18 @@ def isSymbol(char):
 # variable declaration ::= <identifier> ":" <type>     # Fred note - only handling one identifier at a time, not a sequence
 # <type> ::= "integer"                                 # Fred note - only handling integers at this point
 # <statement part> ::= "begin" <statement sequence> "end"
+# <compound statement> ::= "begin" <statement sequence> "end"  #Fred note - statement part == compound statement
 # <statement sequence> ::= <statement> {";" <statement>}
-# <statement> ::= <simple statement>                   # Fred note - not handling labels or structured statements yet
+# <statement> ::= <simple statement> | <structured statement>
 # <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
-# <assignment statement> ::= <variable identifier> ":=" <expression>
-# <print statement> ::= ("write" | "writeln") "(" (<expression> | <string literal>) ")"
-# <expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
+# <assignment statement> ::= <variable identifier> ":=" <simple expression>
+# <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
+# <structured statement> ::= <compound statement> | <if statement>  # Fred note - not handling repetitive or with statements yet
+# <if statement> ::= if <expression> then <statement>
+# <expression> ::= <simple expression> [<relational operator> <simple expression>]
+# <simple expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
 # <term> ::= <factor> { <multiplication operator> <factor> }
-# <factor> ::= <integer> | <variable identifier> | "(" <expression> ")"
+# <factor> ::= <integer> | <variable identifier> | "(" <simple expression> ")"  # Fred note - official BNF allows <expression> here
 
 # <string literal> = "'" {<any character other than apostrophe or quote mark>} "'"
 # <variable identifier> ::= <identifier>
@@ -73,13 +88,19 @@ def isSymbol(char):
 # <letter> ::= "A" .. "Z" || "a" .. "z"
 # <digit> ::= "0" .. "9"
 # <addition operator> ::= "+" | "-"
-# <multiplication operator> ::= "*" | "/" 
-
+# <multiplication operator> ::= "*" | "/"
+# <relational operator> ::= "="                       # Fred note - only equals is handled at present
 
 class Token:
 	def __init__(self, type, value):
 		self.type = type
 		self.value = value
+
+	def isRelOp(self):
+		if self.type in [TOKEN_RELOP_EQUALS, TOKEN_RELOP_GREATER, TOKEN_RELOP_LESS, TOKEN_RELOP_GREATEREQ, TOKEN_RELOP_LESSEQ]:
+			return True
+		else:
+			return False
 
 	def debugprint(self):
 		return (DEBUG_TOKENDISPLAY[self.type] + ":" + str(self.value))
@@ -146,6 +167,28 @@ class AST():
 			assembler.emitcode("POP RAX")
 			assembler.emitcode("XOR RDX, RDX")  # RDX is concatenated with RAX to do division
 			assembler.emitcode("IDIV RCX")
+		elif self.token.type == TOKEN_RELOP_EQUALS:
+			self.children[0].assemble(assembler)
+			assembler.emitcode("PUSH RAX")
+			self.children[1].assemble(assembler)
+			assembler.emitcode("POP RCX")
+			assembler.emitcode("CMP RCX, RAX")
+			# tried using CMOVE/CMOVNE but NASM didn't like them
+			labeleq = assembler.generate_local_label()
+			labeldone = assembler.generate_local_label()
+			assembler.emitcode("JE " + labeleq)
+			assembler.emitcode("MOV RAX, 0")
+			assembler.emitcode("JMP " + labeldone)
+			assembler.emitlabel(labeleq)
+			assembler.emitcode("MOV RAX, -1")
+			assembler.emitlabel(labeldone)
+		elif self.token.type == TOKEN_IF:
+			label = assembler.generate_local_label()
+			self.children[0].assemble(assembler)
+			assembler.emitcode("CMP RAX, 0")
+			assembler.emitcode("JE " + label)
+			self.children[1].assemble(assembler)
+			assembler.emitlabel(label)
 		elif self.token.type == TOKEN_WRITELN or self.token.type == TOKEN_WRITE:
 			for child in self.children:
 				if child.token.type == TOKEN_STRING:
@@ -196,14 +239,14 @@ class Tokenizer:
 		self.line_number = 1
 		self.line_position = 1
 
-	def raiseTokenizeError(selfself, errormsg):
+	def raiseTokenizeError(self, errormsg):
 		errstr = "Parse Error: " + errormsg + "\n"
 		errstr += "Line: " + str(self.line_number) + ", Position: " + str(self.line_position) + "\n"
 		if self.peek() == "":
 			errstr += "at EOF"
 		else:
 			errstr += "Immediately prior to: " + self.peekMulti(10)
-		raise ValueError(str)
+		raise ValueError(errstr)
 
 
 	def peek(self):
@@ -301,6 +344,12 @@ class Tokenizer:
 					ret = Token(TOKEN_WRITELN, None)
 				elif ident == "write":
 					ret = Token(TOKEN_WRITE, None)
+				elif ident == "if":
+					ret = Token(TOKEN_IF, None)
+				elif ident == "then":
+					ret = Token(TOKEN_THEN, None)
+				elif ident == "else":
+					ret = Token(TOKEN_ELSE, None)
 				elif ident == "program":
 					ret = Token(TOKEN_PROGRAM, None)
 				elif ident == "var":
@@ -340,6 +389,8 @@ class Tokenizer:
 					ret = Token(TOKEN_COLON, None)
 				elif sym == ":=":
 					ret = Token(TOKEN_ASSIGNMENT_OPERATOR, None)
+				elif sym == "=":
+					ret = Token(TOKEN_RELOP_EQUALS, None)
 				else:
 					self.raiseTokenizeError("Unrecognized Token: " + sym)
 
@@ -375,12 +426,12 @@ class Parser:
 
 
 	def parseFactor(self):
-		# <factor> ::= <integer> | <variable identifier> | "(" <expression> ")"
+		# <factor> ::= <integer> | <variable identifier> | "(" <simple expression> ")"
 		# <integer> ::= ["-"] <digit> {<digit>}
 		if self.tokenizer.peek() == "(":
 			# parens do not go in the AST
 			lparen = self.tokenizer.getNextToken()
-			ret = self.parseExpression()
+			ret = self.parseSimpleExpression()
 			if self.tokenizer.peek() != ")":
 				self.raiseParseError("Right Paren expected")
 			rparen = self.tokenizer.getNextToken()
@@ -412,8 +463,8 @@ class Parser:
 			ret = multdiv
 		return ret
 
-	def parseExpression(self):
-		# <expression> ::= <term> { <addition operator> <term> }
+	def parseSimpleExpression(self):
+		# <simple expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
 		ret = self.parseTerm()
 		while self.tokenizer.peek() in ['+', '-']:
 			addsub = AST(self.tokenizer.getNextToken())
@@ -422,37 +473,74 @@ class Parser:
 			ret = addsub
 		return ret
 
-	def parseStatement(self):
-		# <statement> ::= <simple statement>                   # Fred note - not handling labels or structured statements yet
-		# <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
-		# <assignment statement> ::= <variable identifier> ":=" <expression>
-		# <print statement> ::= ("write" | "writeln") "(" (<expression> | <string literal>) ")"
-
-		tok = self.tokenizer.getNextToken()
-
-		if tok.type == TOKEN_WRITELN or tok.type == TOKEN_WRITE:
-			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
-			if self.tokenizer.peek() == "'":
-				tobeprinted = AST(self.tokenizer.getNextToken(TOKEN_STRING))
-			else:
-				tobeprinted = self.parseExpression()
-			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
-
+	def parseExpression(self):
+		# <expression> ::= <simple expression> [<relational operator> <simple expression>]
+		first_simple_expression = self.parseSimpleExpression()
+		if self.tokenizer.peek() in [">", "<", "="]:
+			tok = self.tokenizer.getNextToken()
+			if not tok.isRelOp():
+				raiseParseError("Relational Operator Expected, got: " + DEBUG_TOKENDISPLAY[tok.type])
 			ret = AST(tok)
-			ret.children.append(tobeprinted)
-		elif tok.type == TOKEN_VARIABLE_IDENTIFIER:
-			# we are assigning here
-			tok.type = TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT
-			assignment_operator = self.tokenizer.getNextToken(TOKEN_ASSIGNMENT_OPERATOR)
-			ret = AST(tok)
-			ret.children.append(self.parseExpression())
+			ret.children.append(first_simple_expression)
+			ret.children.append(self.parseSimpleExpression())
 		else:
-			raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY[tok.type])
+			ret = AST(first_simple_expression)
 
 		return ret
 
-	def parseStatementPart(self):
-		# <statement part> ::= "begin" <statement sequence> "end"
+	def parseIfStatement(self):
+		# <if statement> ::= if <expression> then <statement>
+		ret = AST(self.tokenizer.getNextToken(TOKEN_IF))
+		expression = self.parseExpression()
+		ret.children.append(expression)
+		tok = self.tokenizer.getNextToken(TOKEN_THEN)
+		statement = self.parseStatement()
+		ret.children.append(statement)
+		return ret
+
+
+	def parseStatement(self):
+		# <statement> ::= <simple statement> | <structured statement>
+		# <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
+		# <assignment statement> ::= <variable identifier> ":=" <simple expression>
+		# <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
+		# <structured statement> ::= <compound statement> | <if statement>  # Fred note - not handling repetitive or with statements yet
+		# <if statement> ::= if <expression> then <statement>
+
+
+		# if next token is begin then it is a structured => compound statement
+		nextsix = self.tokenizer.peekMulti(6).lower()
+		if nextsix[0:5] == 'begin' and nextsix[5].isspace():
+			ret = self.parseCompoundStatement()
+		# if next token is if then it is a structured => if statement
+		elif nextsix[0:2] == "if" and nextsix[2].isspace():
+			ret = self.parseIfStatement()
+		else:
+			tok = self.tokenizer.getNextToken()
+
+			if tok.type == TOKEN_WRITELN or tok.type == TOKEN_WRITE:
+				lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+				if self.tokenizer.peek() == "'":
+					tobeprinted = AST(self.tokenizer.getNextToken(TOKEN_STRING))
+				else:
+					tobeprinted = self.parseSimpleExpression()
+				rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+
+				ret = AST(tok)
+				ret.children.append(tobeprinted)
+			elif tok.type == TOKEN_VARIABLE_IDENTIFIER:
+				# we are assigning here
+				tok.type = TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT
+				assignment_operator = self.tokenizer.getNextToken(TOKEN_ASSIGNMENT_OPERATOR)
+				ret = AST(tok)
+				ret.children.append(self.parseSimpleExpression())
+			else:
+				self.raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY[tok.type])
+
+		return ret
+
+	def parseCompoundStatement(self):
+		# <compound statement> ::= "begin" <statement sequence> "end"
 		# <statement sequence> ::= <statement> {";" <statement>}
 		ret = AST(self.tokenizer.getNextToken(TOKEN_BEGIN))
 		statement = self.parseStatement()
@@ -463,6 +551,12 @@ class Parser:
 			ret.children.append(statement)
 		end = self.tokenizer.getNextToken(TOKEN_END)
 		return ret
+
+	def parseStatementPart(self):
+		# <statement part> ::= "begin" <statement sequence> "end"
+		# observation: the "Statement Part" and "Compound Statement" are identical
+		return self.parseCompoundStatement()
+
 
 	def parseVariableDeclarations(self):
 		# variable declaration part ::= "var" <variable declaration> ";" {<variable declaration> ";"}
@@ -476,7 +570,7 @@ class Parser:
 			# So, we are done when the next 6 characters are BEGIN plus whitespace.
 			# There likely is a better way to do this.
 			nextsix = self.tokenizer.peekMulti(6).lower()
-			if nextsix[0:5].lower() == 'begin' and nextsix[5].isspace():
+			if nextsix[0:5] == 'begin' and nextsix[5].isspace():
 				done = True
 			else:
 				ident_token = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
