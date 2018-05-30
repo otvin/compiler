@@ -1,6 +1,6 @@
 # compiler
 
-Goal is to eventually build a compiler for a subset of Pascal.  Compiler is written in python3 in Ubuntu.  The assembly files are written in NASM format.  You must install NASM via e.g. ```sudo apt-get install nasm``` in order for the program to compile the assembly.
+This program is a compiler for a subset of Pascal.  Compiler is written in python3 in Ubuntu.  The assembly files are written in NASM format.  You must install NASM via e.g. ```sudo apt-get install nasm``` in order for the program to compile the assembly.
 
 ### Current Status:
 
@@ -11,7 +11,7 @@ curly braces mean zero or more repetitions
 brackets mean zero or one repetition - in other words, an optional construct.
 parentheses are used for grouping - exactly one of the items in the group is chosen
 vertical bar means a choice of one from many
-literal text is included in quotations marks
+literal text is included in quotation marks
 # indicates what follows on the remainder of the line is a comment
 
 program ::= <program heading> <block> "."
@@ -29,7 +29,7 @@ variable declaration ::= <identifier> ":" <type>     # Fred note - only handling
 <assignment statement> ::= <variable identifier> ":=" <simple expression>
 <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
 <structured statement> ::= <compound statement> | <if statement>  # Fred note - not handling repetitive or with statements yet
-<if statement> ::= if <expression> then <statement>
+<if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
 <expression> ::= <simple expression> [<relational operator> <simple expression>]
 <simple expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
 <term> ::= <factor> { <multiplication operator> <factor> }
@@ -43,10 +43,10 @@ variable declaration ::= <identifier> ":" <type>     # Fred note - only handling
 <digit> ::= "0" .. "9"
 <addition operator> ::= "+" | "-"
 <multiplication operator> ::= "*" | "/"
-<relational operator> ::= "="                       # Fred note - only equals is handled at present
+<relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 ```
  
-In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements or variable assignments, or ```if/then``` statements.  The only valid conditional test for an ```if``` statement is equality.  After the then, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display the result of either a string literal, or a single mathematical expression with all arguments being integers or integer-typed variables.  Addition, subtraction, multiplication, and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
+In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements or variable assignments, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display the result of either a string literal, or a single mathematical expression with all arguments being integers or integer-typed variables.  Addition, subtraction, multiplication, and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
 
 The compiler will ignore comments between open and close curly braces ```{``` and ```}```, anywhere in the code.  So ``` 4 + {random comment} 2``` will evaluate to ```6```.
 
