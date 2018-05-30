@@ -65,7 +65,7 @@ def main():
 	f = dotest("compiler_test_files/test4.pas", "compiler_test_files/test4.out")
 	f = dotest("compiler_test_files/test5.pas", "compiler_test_files/test5.out")
 	f = dotest("compiler_test_files/test6.pas", "compiler_test_files/test6.out")
-
+	f = dotest("compiler_test_files/test7.pas", "compiler_test_files/test7.out")
 
 	print ("Tests Attempted: " + str(NUM_ATTEMPTS))
 	print ("Tests Succeeded: " + str(NUM_SUCCESSES))

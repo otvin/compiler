@@ -18,27 +18,28 @@ TOKEN_RELOP_GREATER = 12
 TOKEN_RELOP_LESS = 13
 TOKEN_RELOP_GREATEREQ = 14
 TOKEN_RELOP_LESSEQ = 15
+TOKEN_RELOP_NOTEQ = 16
 
-TOKEN_PROGRAM = 16
-TOKEN_BEGIN = 17
-TOKEN_END = 18
-TOKEN_VAR = 19
+TOKEN_PROGRAM = 17
+TOKEN_BEGIN = 18
+TOKEN_END = 19
+TOKEN_VAR = 20
 
-TOKEN_WRITELN = 20
-TOKEN_WRITE = 21
-TOKEN_IF = 22
-TOKEN_THEN = 23
-TOKEN_ELSE = 24
+TOKEN_WRITELN = 21
+TOKEN_WRITE = 22
+TOKEN_IF = 23
+TOKEN_THEN = 24
+TOKEN_ELSE = 25
 
-TOKEN_STRING = 25
-TOKEN_VARIABLE_IDENTIFIER = 26
-TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 27
-TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 28
-TOKEN_VARIABLE_TYPE_INTEGER = 29
+TOKEN_STRING = 26
+TOKEN_VARIABLE_IDENTIFIER = 27
+TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 28
+TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 29
+TOKEN_VARIABLE_TYPE_INTEGER = 30
 
 
 # hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ':=', '=', '>', '<', '>=', '<=',
+DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ':=', '=', '>', '<', '>=', '<=', '<>'
 					  	'PROGRAM', 'BEGIN', 'END', 'VAR',
 					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE',
 					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer']
@@ -89,7 +90,7 @@ def isSymbol(char):
 # <digit> ::= "0" .. "9"
 # <addition operator> ::= "+" | "-"
 # <multiplication operator> ::= "*" | "/"
-# <relational operator> ::= "="                       # Fred note - only equals is handled at present
+# <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 
 class Token:
 	def __init__(self, type, value):
@@ -97,7 +98,7 @@ class Token:
 		self.value = value
 
 	def isRelOp(self):
-		if self.type in [TOKEN_RELOP_EQUALS, TOKEN_RELOP_GREATER, TOKEN_RELOP_LESS, TOKEN_RELOP_GREATEREQ, TOKEN_RELOP_LESSEQ]:
+		if self.type in [TOKEN_RELOP_EQUALS, TOKEN_RELOP_GREATER, TOKEN_RELOP_LESS, TOKEN_RELOP_GREATEREQ, TOKEN_RELOP_LESSEQ, TOKEN_RELOP_NOTEQ]:
 			return True
 		else:
 			return False
@@ -167,19 +168,34 @@ class AST():
 			assembler.emitcode("POP RAX")
 			assembler.emitcode("XOR RDX, RDX")  # RDX is concatenated with RAX to do division
 			assembler.emitcode("IDIV RCX")
-		elif self.token.type == TOKEN_RELOP_EQUALS:
+		elif self.token.isRelOp():
+			if self.token.type == TOKEN_RELOP_EQUALS:
+				jumpinstr = "JE"
+			elif self.token.type == TOKEN_RELOP_NOTEQ:
+				jumpinstr = "JNE"
+			elif self.token.type == TOKEN_RELOP_GREATER:
+				jumpinstr = "JG"
+			elif self.token.type == TOKEN_RELOP_GREATEREQ:
+				jumpinstr = "JGE"
+			elif self.token.type == TOKEN_RELOP_LESS:
+				jumpinstr = "JL"
+			elif self.token.type == TOKEN_RELOP_LESSEQ:
+				jumpinstr = "JLE"
+			else:
+				raise ValueError ("Invalid Relational Operator : " + DEBUG_TOKENDISPLAY[self.token.type])
+
 			self.children[0].assemble(assembler)
 			assembler.emitcode("PUSH RAX")
 			self.children[1].assemble(assembler)
 			assembler.emitcode("POP RCX")
 			assembler.emitcode("CMP RCX, RAX")
 			# tried using CMOVE/CMOVNE but NASM didn't like them
-			labeleq = assembler.generate_local_label()
+			labeltrue = assembler.generate_local_label()
 			labeldone = assembler.generate_local_label()
-			assembler.emitcode("JE " + labeleq)
+			assembler.emitcode(jumpinstr + " " + labeltrue)
 			assembler.emitcode("MOV RAX, 0")
 			assembler.emitcode("JMP " + labeldone)
-			assembler.emitlabel(labeleq)
+			assembler.emitlabel(labeltrue)
 			assembler.emitcode("MOV RAX, -1")
 			assembler.emitlabel(labeldone)
 		elif self.token.type == TOKEN_IF:
@@ -366,7 +382,7 @@ class Tokenizer:
 				sym = self.getSymbol()
 				# multi-character symbols we support will be
 				# := >= <= <>
-				if (sym in (":", ">", "<") and self.peek() == "=") or (sym == "<" and self.peek == ">"):
+				if (sym in (":", ">", "<") and self.peek() == "=") or (sym == "<" and self.peek() == ">"):
 					sym += self.getSymbol()
 
 				if sym == "+":
@@ -391,6 +407,16 @@ class Tokenizer:
 					ret = Token(TOKEN_ASSIGNMENT_OPERATOR, None)
 				elif sym == "=":
 					ret = Token(TOKEN_RELOP_EQUALS, None)
+				elif sym == "<>":
+					ret = Token(TOKEN_RELOP_NOTEQ, None)
+				elif sym == ">":
+					ret = Token(TOKEN_RELOP_GREATER, None)
+				elif sym == ">=":
+					ret = Token(TOKEN_RELOP_GREATEREQ, None)
+				elif sym == "<":
+					ret = Token(TOKEN_RELOP_LESS, None)
+				elif sym == "<=":
+					ret = Token(TOKEN_RELOP_LESSEQ, None)
 				else:
 					self.raiseTokenizeError("Unrecognized Token: " + sym)
 
