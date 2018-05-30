@@ -76,7 +76,7 @@ def isSymbol(char):
 # <assignment statement> ::= <variable identifier> ":=" <simple expression>
 # <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
 # <structured statement> ::= <compound statement> | <if statement>  # Fred note - not handling repetitive or with statements yet
-# <if statement> ::= if <expression> then <statement>
+# <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
 # <expression> ::= <simple expression> [<relational operator> <simple expression>]
 # <simple expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
 # <term> ::= <factor> { <multiplication operator> <factor> }
@@ -203,8 +203,22 @@ class AST():
 			self.children[0].assemble(assembler)
 			assembler.emitcode("CMP RAX, 0")
 			assembler.emitcode("JE " + label)
-			self.children[1].assemble(assembler)
-			assembler.emitlabel(label)
+			if len(self.children) == 2:
+				# straight if-then
+				self.children[1].assemble(assembler)
+				assembler.emitlabel(label)
+			elif len(self.children) == 3:
+				# if-then-else
+				skipelselabel = assembler.generate_local_label()
+				self.children[1].assemble(assembler)
+				assembler.emitcode("JMP " + skipelselabel)
+				assembler.emitlabel(label)
+				self.children[2].assemble(assembler)
+				assembler.emitlabel(skipelselabel)
+			else:
+				raise ValueError ("Invalid number of tokens following IF.  Expected 2 or 3, got: " + str(len(self.children)))
+
+
 		elif self.token.type == TOKEN_WRITELN or self.token.type == TOKEN_WRITE:
 			for child in self.children:
 				if child.token.type == TOKEN_STRING:
@@ -515,13 +529,18 @@ class Parser:
 		return ret
 
 	def parseIfStatement(self):
-		# <if statement> ::= if <expression> then <statement>
+		# <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
 		ret = AST(self.tokenizer.getNextToken(TOKEN_IF))
 		expression = self.parseExpression()
 		ret.children.append(expression)
 		tok = self.tokenizer.getNextToken(TOKEN_THEN)
 		statement = self.parseStatement()
 		ret.children.append(statement)
+		nextfive = self.tokenizer.peekMulti(5).lower()
+		if nextfive[0:4] == "else" and nextfive[4].isspace():
+			tok = self.tokenizer.getNextToken(TOKEN_ELSE)
+			elsestatement = self.parseStatement()
+			ret.children.append(elsestatement)
 		return ret
 
 
