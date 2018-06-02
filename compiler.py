@@ -24,23 +24,26 @@ TOKEN_PROGRAM = 17
 TOKEN_BEGIN = 18
 TOKEN_END = 19
 TOKEN_VAR = 20
+TOKEN_PROCFUNC_DECLARATION_PART = 21  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
+TOKEN_FUNCTION = 22
 
-TOKEN_WRITELN = 21
-TOKEN_WRITE = 22
-TOKEN_IF = 23
-TOKEN_THEN = 24
-TOKEN_ELSE = 25
 
-TOKEN_STRING = 26
-TOKEN_VARIABLE_IDENTIFIER = 27
-TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 28
-TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 29
-TOKEN_VARIABLE_TYPE_INTEGER = 30
+TOKEN_WRITELN = 23
+TOKEN_WRITE = 24
+TOKEN_IF = 25
+TOKEN_THEN = 26
+TOKEN_ELSE = 27
+
+TOKEN_STRING = 28
+TOKEN_VARIABLE_IDENTIFIER = 29
+TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 30
+TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 31
+TOKEN_VARIABLE_TYPE_INTEGER = 32
 
 
 # hack for pretty printing
 DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ':=', '=', '>', '<', '>=', '<=', '<>'
-					  	'PROGRAM', 'BEGIN', 'END', 'VAR',
+					  	'PROGRAM', 'BEGIN', 'END', 'VAR', '{Procedures/Functions}', 'FUNCTION',
 					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE',
 					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer']
 
@@ -59,15 +62,20 @@ def isSymbol(char):
 # brackets mean zero or one repetition - in other words, an optional construct.
 # parentheses are used for grouping - exactly one of the items in the group is chosen
 # vertical bar means a choice of one from many
-# literal text is included in quotations marks
+# literal text is included in quotation marks
 
 # program ::= <program heading> <block> "."
 # program heading ::= "program" <identifier> ";"
 # block ::= [<declaration part>] <statement part>
-# declaration part ::= <variable declaration part>     # Fred note - only handling variables at this point
+# declaration part ::= [<variable declaration part>] [<procedure and function declaration part]
 # variable declaration part ::= "var" <variable declaration> ";" {<variable declaration> ";"}
 # variable declaration ::= <identifier> ":" <type>     # Fred note - only handling one identifier at a time, not a sequence
 # <type> ::= "integer"                                 # Fred note - only handling integers at this point
+# procedure and function declaration part ::= {<function declaration> ";"}
+# function declaration ::= <function heading> ";" <function body>
+# function heading ::= "function" <identifier> [<formal parameter list>] ":" <type>
+# function body ::= <statement part> 				   # Fred note - we are vastly simplifying functions.  No local vars, no nested functions
+# formal parameter list ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
 # <statement part> ::= "begin" <statement sequence> "end"
 # <compound statement> ::= "begin" <statement sequence> "end"  #Fred note - statement part == compound statement
 # <statement sequence> ::= <statement> {";" <statement>}
@@ -106,10 +114,21 @@ class Token:
 	def debugprint(self):
 		return (DEBUG_TOKENDISPLAY[self.type] + ":" + str(self.value))
 
+class ProcFuncParameter:
+	def __init__(self, name, type):
+		self.name = name
+		self.type = type
+
+class ProcFuncHeading:
+	def __init__(self, name):
+		self.name = name
+		self.parameters = []
+		self.returntype = returntype
 
 class AST():
 	def __init__(self, token):
 		self.token = token
+		self.procFuncHeading = None  # only used for procs and funcs
 		self.children = []
 
 	def rpn_print(self):
@@ -127,15 +146,22 @@ class AST():
 
 	def find_variable_declarations(self, assembler):
 		if self.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
-			if self.token.value in assembler.variable_symbol_table:
+			if self.token.value in assembler.variable_symbol_table.symbollist():
 				raise ValueError ("Variable redefined: " + self.token.value)
 			else:
-				assembler.variable_symbol_table[self.token.value] = ("int", assembler.generate_variable_name('int'))  #todo - use a constant instead of "int"
+				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_INTEGER, assembler.generate_variable_name('int'))
+		elif self.token.type == TOKEN_FUNCTION:
+			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist():
+				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
+			else:
+				assembler.variable.symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_FUNCTION, assembler.generate_variable_name("func"))
+			# eventually - functions will have variable declarations themselves, will need to handle that here.
+			# but those will be local - the procFuncHeading object will need its own symbol table.
 		else:
 			for child in self.children:
 				child.find_variable_declarations(assembler)
 
-	def assemble(self, assembler):
+	def assemble(self, assembler, localSymbolTable = None):
 		if self.token.type == TOKEN_INT:
 			assembler.emitcode("MOV RAX, " + str(self.token.value))
 		elif self.token.type == TOKEN_PLUS:
@@ -237,24 +263,36 @@ class AST():
 			if self.token.type == TOKEN_WRITELN:
 				assembler.emitcode("call _writeCRLF")
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
-			vartuple = assembler.variable_symbol_table[self.token.value]
-			if vartuple[0] == "int": #to-do use a constant instead of "int"
+			symbol = assembler.variable_symbol_table.get(self.token.value)
+			if symbol.type == asm_funcs.SYMBOL_INTEGER:
 				self.children[0].assemble(assembler) # RAX has the value
-				assembler.emitcode("MOV [" + vartuple[1] + "], RAX")
+				assembler.emitcode("MOV [" + symbol.label + "], RAX")
 			else:
 				raise ValueError ("Invalid variable type :" + vartuple[0])
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:
-			vartuple = assembler.variable_symbol_table[self.token.value]
-			if vartuple[0] == "int":  # to-do use a constant instead of "int"
-				assembler.emitcode("MOV RAX, [" + vartuple[1] + "]")
+			symbol = assembler.variable_symbol_table.get(self.token.value)
+			if symbol.type == asm_funcs.SYMBOL_INTEGER:
+				# check the local symbol table first
+				assembler.emitcode("MOV RAX, [" + symbol.label + "]")
+			elif vartuple[0] == "func":
+				# first six integer arguments are passed in RDI, RSI, RDX, RCX, R8, and R9 in that order
+				# integer return values are passed in RAX
+				assembler.emitlabel(vartype[1])
+				self.children[0].assemble(assembler)
+				assembler.emitcode("RET")
+
 			else:
 				raise ValueError ("Invalid variable type :" + vartuple[0])
-		elif self.token.type == TOKEN_BEGIN:
-			for child in self.children:
-				child.assemble(assembler)
+		elif self.token.type == TOKEN_FUNCTION:
+			# push the rdi, rsi, rdx, rcx, r8, and r9 registers onto the stack (or the ones we need)
+			# put the parameters into those registers
+			# call the function
+			# rax has the return
+			# pop all the registers back
+			pass
 		elif self.token.type == TOKEN_VAR:
 			pass  # variable declarations are assembled earlier
-		elif self.token.type == TOKEN_PROGRAM:
+		elif self.token.type in [TOKEN_BEGIN, TOKEN_PROCFUNC_DECLARATION_PART, TOKEN_PROGRAM] :
 			for child in self.children:
 				child.assemble(assembler)
 		else:
@@ -384,6 +422,8 @@ class Tokenizer:
 					ret = Token(TOKEN_PROGRAM, None)
 				elif ident == "var":
 					ret = Token(TOKEN_VAR, None)
+				elif ident == "function":
+					ret = Token(TOKEN_FUNCTION, None)
 				elif ident == "integer":
 					ret = Token(TOKEN_VARIABLE_TYPE_INTEGER, None)
 				else:  # assume any other identifier is a variable; if inappropriate, it will throw an error later in parsing.
@@ -630,6 +670,56 @@ class Parser:
 
 		return ret
 
+	def parseFunctionDeclaration(self):
+		# function declaration ::= <function heading> ";" <function body>
+		# function heading ::= "function" <identifier> [<formal parameter list>] ":" <type>
+		# function body ::= <statement part> 				   # Fred note - we are vastly simplifying functions.  No local vars, no nested functions
+		# formal parameter list ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
+
+		functoken = self.tokenizer.getNextToken(TOKEN_FUNCTION)
+		funcheading = ProcFuncHeading(self.tokenizer.getIdentifier())
+
+
+		if self.tokenizer.peek() == "(":
+			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+			# technically, if there are any parens there needs to be at least one argument
+			# so this is a bit lazy, but the "bug" of allowing () seems harmless.  I could change the
+			# grammar if desired.
+			while self.tokenizer.peek() != ")":
+				paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
+				colon = self.tokenizer.getNextToken(TOKEN_COLON)
+				paramtype = self.tokenizer.getNextToken()
+				if paramtype != TOKEN_VARIABLE_TYPE_INTEGER:
+					raiseParseError("Expected Integer Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtype))
+				funcheading.parameters.append(ProcFuncParameter(paramname, paramtype))
+
+			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+
+		colon = self.tokenizer.getNextToken(TOKEN_COLON)
+		functype = self.tokenizer.getNextToken()
+		if functype == TOKEN_VARIABLE_TYPE_INTEGER:
+			funcheading.returntype = functype
+
+		else:
+			raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype))
+
+		ret = AST(functoken)
+		ret.procFuncHeading = funcheading
+
+		ret.children.append(self.parseStatementPart())
+
+		return ret
+
+	def parseProcedureFunctionDeclarationPart(self):
+		# procedure and function declaration part ::= {<function declaration> ";"}
+		ret = AST(Token(TOKEN_PROCFUNC_DECLARATION_PART, None))  # this is not a real token, it just holds procs and functions
+		nextnine = self.tokenizer.peekMulti(9).lower()
+		while nextnine[0:8] == "function" and nextnine[9].isspace():
+			ret.children.append(parseFunctionDeclaration())
+			nextnine = self.tokenizer.peekMulti(9).lower()
+		return ret
+
+
 	def parseProgram(self):
 		# program ::= <program heading> <block> "."
 		# program heading ::= "program" <identifier> ";"
@@ -638,11 +728,18 @@ class Parser:
 		semi = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
 		# block ::= [<declaration part>] <statement part>
-		# declaration part ::= <variable declaration part>     # Fred note - only handling variables at this point
-		if self.tokenizer.peekMulti(3).lower() == 'var':
+		# declaration part ::= [<variable declaration part>] [<function declaration part]
+		nextfour = self.tokenizer.peekMulti(4).lower()
+		if nextfour[0:3] == 'var' and nextfour[3].isspace():
 			variable_declarations = self.parseVariableDeclarations()
 		else:
 			variable_declarations = None
+
+		nextnine = self.tokenizer.peekMulti(9).lower()
+		if nextnine[0:8] == "function" and nextnine[9].isspace():
+			function_declarations = self.parseProcedureFunctionDeclarationPart()
+		else:
+			function_declarations = None
 
 		statementPart = self.parseStatementPart()
 		period = self.tokenizer.getNextToken(TOKEN_PERIOD)
@@ -651,6 +748,9 @@ class Parser:
 
 		if not (variable_declarations is None):  # variable declarations are optional
 			ret.children.append(variable_declarations)
+
+		if not (function_declarations is None):  # function declarations are optional
+			ret.children.append(function_declarations)
 
 		ret.children.append(statementPart)
 

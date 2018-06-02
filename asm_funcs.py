@@ -1,12 +1,41 @@
 import os
 
+SYMBOL_FUNCTION = 0
+SYMBOL_INTEGER = 1
+
+class SymbolData:
+	def __init__(self, type, label):
+		self.type = type
+		self.label = label
+
+class SymbolTable:
+	def __init__ (self):
+		self.symbols = {}
+
+	def exists(self, symbolname):
+		if symbolname in self.symbols:
+			return True
+		else:
+			return False
+
+	def insert(self, symbolname, symboltype, symbollabel):
+		if self.exists(symbolname):
+			raise ValueError ("Duplicate symbol inserted :" + symbolname)
+
+		self.symbols[symbolname] = SymbolData(symboltype, symbollabel)
+
+	def get(self, symbolname):
+		return self.symbols[symbolname]
+
+	def symbollist(self):
+		return self.symbols.keys()
 
 class Assembler:
 	def __init__(self, asm_filename):
 		self.asm_file = open(asm_filename, 'w')
 		self.string_literals = {}
 		self.next_literal_index = 0
-		self.variable_symbol_table = {}
+		self.variable_symbol_table = SymbolTable()
 		self.next_variable_index = 0
 		self.next_local_label_index = 0
 
@@ -47,9 +76,10 @@ class Assembler:
 		self.emitsection("section .bss")
 		self.emitcode("write_CRLF resb 2")
 
-		for key in self.variable_symbol_table.keys():
-			if self.variable_symbol_table[key][0] == "int":  #to-do use a constant instead of "int"
-				self.emitcode(self.variable_symbol_table[key][1] + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int
+		for key in self.variable_symbol_table.symbollist():
+			symbol = self.variable_symbol_table.get(key)
+			if symbol.type == SYMBOL_INTEGER:
+				self.emitcode(symbol.label + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int
 
 
 	def setup_data(self):
