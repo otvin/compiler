@@ -75,7 +75,7 @@ def isSymbol(char):
 # <procedure and function declaration part> ::= {<function declaration> ";"}
 # <function declaration> ::= <function heading> ";" <function body>
 # <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
-# <function body> ::= <statement part> 				   /* Fred note - we are vastly simplifying functions.  No local vars, no nested functions */
+# <function body> ::= [<variable declaration part>] <statement part>
 # <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 parameters max at this time */
 # <statement part> ::= "begin" <statement sequence> "end"
 # <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
@@ -377,6 +377,17 @@ class Tokenizer:
 	def peekMulti(self, num):
 		return self.text[self.curPos:self.curPos+num]
 
+	def peekMatchStringAndSpace(self, str):
+		# Looks to see if the next N characters match the string and then the N+1th character is whitespace.
+		# Purpose: to see if the next block of code begins with a specific keyword or such.
+		l = len(str)
+		nextN = self.peekMulti(l+1).lower()
+		if nextN[0:l] == str.lower() and nextN[l].isspace():
+			return True
+		else:
+			return False
+
+
 	def eat(self):
 		if self.curPos >= self.length:
 			raise ValueError("Length Exceeded")
@@ -640,8 +651,7 @@ class Parser:
 		tok = self.tokenizer.getNextToken(TOKEN_THEN)
 		statement = self.parseStatement()
 		ret.children.append(statement)
-		nextfive = self.tokenizer.peekMulti(5).lower()
-		if nextfive[0:4] == "else" and nextfive[4].isspace():
+		if self.tokenizer.peekMatchStringAndSpace("else"):
 			tok = self.tokenizer.getNextToken(TOKEN_ELSE)
 			elsestatement = self.parseStatement()
 			ret.children.append(elsestatement)
@@ -658,11 +668,10 @@ class Parser:
 
 
 		# if next token is begin then it is a structured => compound statement
-		nextsix = self.tokenizer.peekMulti(6).lower()
-		if nextsix[0:5] == 'begin' and nextsix[5].isspace():
+		if self.tokenizer.peekMatchStringAndSpace("begin"):
 			ret = self.parseCompoundStatement()
 		# if next token is if then it is a structured => if statement
-		elif nextsix[0:2] == "if" and nextsix[2].isspace():
+		elif self.tokenizer.peekMatchStringAndSpace("if"):
 			ret = self.parseIfStatement()
 		else:
 			tok = self.tokenizer.getNextToken()
@@ -720,10 +729,9 @@ class Parser:
 			# <procedure and function declaration part> starts with "function" now. (procedures allowed later)
 			# So, we are done when the next 6 characters are BEGIN plus whitespace.
 			# There likely is a better way to do this.
-			nextnine = self.tokenizer.peekMulti(9).lower()
-			if nextnine[0:5] == 'begin' and nextnine[5].isspace():
+			if self.tokenizer.peekMatchStringAndSpace("begin"):
 				done = True
-			elif nextnine[0:8] == "function" and nextnine[8].isspace():
+			elif self.tokenizer.peekMatchStringAndSpace("function"):
 				done = True
 			else:
 				ident_token = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
@@ -749,10 +757,10 @@ class Parser:
 		return ProcFuncParameter(paramname, paramtypetoken.type)
 
 	def parseFunctionDeclaration(self):
-		# function declaration ::= <function heading> ";" <function body>
-		# function heading ::= "function" <identifier> [<formal parameter list>] ":" <type>
-		# function body ::= <statement part> 				   # Fred note - we are vastly simplifying functions.  No local vars, no nested functions
-		# formal parameter list ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
+		# <function declaration> ::= <function heading> ";" <function body>
+		# <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
+		# <function body> ::= [<variable declaration part>] <statement part>
+		# <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
 
 		functoken = self.tokenizer.getNextToken(TOKEN_FUNCTION)
 		funcheading = ProcFuncHeading(self.tokenizer.getIdentifier())
@@ -785,11 +793,9 @@ class Parser:
 	def parseProcedureFunctionDeclarationPart(self):
 		# procedure and function declaration part ::= {<function declaration> ";"}
 		ret = AST(Token(TOKEN_PROCFUNC_DECLARATION_PART, None))  # this is not a real token, it just holds procs and functions
-		nextnine = self.tokenizer.peekMulti(9).lower()
-		while nextnine[0:8] == "function" and nextnine[8].isspace():
+		while self.tokenizer.peekMatchStringAndSpace("function"):
 			ret.children.append(self.parseFunctionDeclaration())
 			semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
-			nextnine = self.tokenizer.peekMulti(9).lower()
 		return ret
 
 
@@ -802,14 +808,12 @@ class Parser:
 
 		# block ::= [<declaration part>] <statement part>
 		# declaration part ::= [<variable declaration part>] [<function declaration part]
-		nextfour = self.tokenizer.peekMulti(4).lower()
-		if nextfour[0:3] == 'var' and nextfour[3].isspace():
+		if self.tokenizer.peekMatchStringAndSpace("var"):
 			variable_declarations = self.parseVariableDeclarations()
 		else:
 			variable_declarations = None
 
-		nextnine = self.tokenizer.peekMulti(9).lower()
-		if nextnine[0:8] == "function" and nextnine[8].isspace():
+		if self.tokenizer.peekMatchStringAndSpace("function"):
 			function_declarations = self.parseProcedureFunctionDeclarationPart()
 		else:
 			function_declarations = None
