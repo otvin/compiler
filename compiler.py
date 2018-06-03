@@ -737,6 +737,16 @@ class Parser:
 
 		return ret
 
+	def parseFunctionParameter(self):
+		# formal parameter list ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
+
+		paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER).value
+		colon = self.tokenizer.getNextToken(TOKEN_COLON)
+		paramtypetoken = self.tokenizer.getNextToken()
+		if paramtypetoken.type != TOKEN_VARIABLE_TYPE_INTEGER:
+			self.raiseParseError("Expected Integer Function Parameter Type, got " + DEBUG_TOKENDISPLAY[paramtype.type])
+		return ProcFuncParameter(paramname, paramtypetoken.type)
+
 	def parseFunctionDeclaration(self):
 		# function declaration ::= <function heading> ";" <function body>
 		# function heading ::= "function" <identifier> [<formal parameter list>] ":" <type>
@@ -749,18 +759,12 @@ class Parser:
 
 		if self.tokenizer.peek() == "(":
 			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
-			# technically, if there are any parens there needs to be at least one argument
-			# so this is a bit lazy, but the "bug" of allowing () seems harmless.  I could change the
-			# grammar if desired.
-			while self.tokenizer.peek() != ")":
-				paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER).value
-				colon = self.tokenizer.getNextToken(TOKEN_COLON)
-				paramtypetoken = self.tokenizer.getNextToken()
-				if paramtypetoken.type != TOKEN_VARIABLE_TYPE_INTEGER:
-					self.raiseParseError("Expected Integer Function Parameter Type, got " + DEBUG_TOKENDISPLAY[paramtype.type])
-				funcheading.parameters.append(ProcFuncParameter(paramname, paramtypetoken.type))
-
+			funcheading.parameters.append(self.parseFunctionParameter())
+			while self.tokenizer.peek() == ";":
+				semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+				funcheading.parameters.append(self.parseFunctionParameter())
 			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+
 
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		functype = self.tokenizer.getNextToken()
