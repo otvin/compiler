@@ -65,31 +65,31 @@ def isSymbol(char):
 # vertical bar means a choice of one from many
 # literal text is included in quotation marks
 
-# program ::= <program heading> <block> "."
-# program heading ::= "program" <identifier> ";"
-# block ::= [<declaration part>] <statement part>
-# declaration part ::= [<variable declaration part>] [<procedure and function declaration part>]
-# variable declaration part ::= "var" <variable declaration> ";" {<variable declaration> ";"}
-# variable declaration ::= <identifier> ":" <type>     # Fred note - only handling one identifier at a time, not a sequence
-# <type> ::= "integer"                                 # Fred note - only handling integers at this point
-# procedure and function declaration part ::= {<function declaration> ";"}
-# function declaration ::= <function heading> ";" <function body>
-# function heading ::= "function" <identifier> [<formal parameter list>] ":" <type>
-# function body ::= <statement part> 				   # Fred note - we are vastly simplifying functions.  No local vars, no nested functions
-# formal parameter list ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
+# <program> ::= <program heading> <block> "."
+# <program heading> ::= "program" <identifier> ";"
+# <block> ::= [<declaration part>] <statement part>
+# <declaration part> ::= [<variable declaration part>] [<procedure and function declaration part>]
+# <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
+# <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
+# <type> ::= "integer"                                 /* Fred note - only handling integers at this point */
+# <procedure and function declaration part> ::= {<function declaration> ";"}
+# <function declaration> ::= <function heading> ";" <function body>
+# <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
+# <function body> ::= <statement part> 				   /* Fred note - we are vastly simplifying functions.  No local vars, no nested functions */
+# <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 parameters max at this time */
 # <statement part> ::= "begin" <statement sequence> "end"
-# <compound statement> ::= "begin" <statement sequence> "end"  #Fred note - statement part == compound statement
+# <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
 # <statement sequence> ::= <statement> {";" <statement>}
 # <statement> ::= <simple statement> | <structured statement>
-# <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
+# <simple statement> ::= <assignment statement> | <print statement>   /* Fred note - print statement not in official BNF */
 # <assignment statement> ::= <variable identifier> ":=" <simple expression>
 # <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
-# <structured statement> ::= <compound statement> | <if statement>  # Fred note - not handling repetitive or with statements yet
+# <structured statement> ::= <compound statement> | <if statement>  /* Fred note - not handling repetitive or with statements yet */
 # <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
 # <expression> ::= <simple expression> [<relational operator> <simple expression>]
-# <simple expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
+# <simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> */
 # <term> ::= <factor> { <multiplication operator> <factor> }
-# <factor> ::= <integer> | <variable identifier> | <function designator> | "(" <simple expression> ")"  # Fred note - official BNF allows <expression> here
+# <factor> ::= <integer> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
 # <function designator> ::= <function identifier> <actual parameter list>
 # <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
@@ -285,6 +285,7 @@ class AST():
 						assembler.emitcode("syscall")
 				else:
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in RAX
+					assembler.emitcode("mov rdi, rax") # first parameter of functions should be in RDI
 					assembler.emitcode("call _writeINT")
 			if self.token.type == TOKEN_WRITELN:
 				assembler.emitcode("call _writeCRLF")

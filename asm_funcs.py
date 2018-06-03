@@ -172,8 +172,7 @@ class Assembler:
 
 	def emit_writeINT(self):
 		self.emitlabel("_writeINT")
-		self.emitcode(";int to be written must be in rax for legacy reasons.  nasm64 uses rdi")
-		self.emitcode("mov rdi, rax")
+		self.emitcode(";int to be written must be in rdi like any other function call")
 		self.emitcode("call prtdec")
 		self.emitcode("ret")
 
