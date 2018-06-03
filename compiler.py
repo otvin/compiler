@@ -12,37 +12,38 @@ TOKEN_RPAREN = 6
 TOKEN_SEMICOLON = 7
 TOKEN_PERIOD = 8
 TOKEN_COLON = 9
-TOKEN_ASSIGNMENT_OPERATOR = 10
-TOKEN_RELOP_EQUALS = 11
-TOKEN_RELOP_GREATER = 12
-TOKEN_RELOP_LESS = 13
-TOKEN_RELOP_GREATEREQ = 14
-TOKEN_RELOP_LESSEQ = 15
-TOKEN_RELOP_NOTEQ = 16
+TOKEN_COMMA = 10
+TOKEN_ASSIGNMENT_OPERATOR = 11
+TOKEN_RELOP_EQUALS = 12
+TOKEN_RELOP_GREATER = 13
+TOKEN_RELOP_LESS = 14
+TOKEN_RELOP_GREATEREQ = 15
+TOKEN_RELOP_LESSEQ = 16
+TOKEN_RELOP_NOTEQ = 17
 
-TOKEN_PROGRAM = 17
-TOKEN_BEGIN = 18
-TOKEN_END = 19
-TOKEN_VAR = 20
-TOKEN_PROCFUNC_DECLARATION_PART = 21  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
-TOKEN_FUNCTION = 22
+TOKEN_PROGRAM = 18
+TOKEN_BEGIN = 19
+TOKEN_END = 20
+TOKEN_VAR = 21
+TOKEN_PROCFUNC_DECLARATION_PART = 22  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
+TOKEN_FUNCTION = 23
 
 
-TOKEN_WRITELN = 23
-TOKEN_WRITE = 24
-TOKEN_IF = 25
-TOKEN_THEN = 26
-TOKEN_ELSE = 27
+TOKEN_WRITELN = 24
+TOKEN_WRITE = 25
+TOKEN_IF = 26
+TOKEN_THEN = 27
+TOKEN_ELSE = 28
 
-TOKEN_STRING = 28
-TOKEN_VARIABLE_IDENTIFIER = 29
-TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 30
-TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 31
-TOKEN_VARIABLE_TYPE_INTEGER = 32
+TOKEN_STRING = 29
+TOKEN_VARIABLE_IDENTIFIER = 30
+TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 31
+TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 32
+TOKEN_VARIABLE_TYPE_INTEGER = 33
 
 
 # hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ':=', '=', '>', '<', '>=', '<=', '<>'
+DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>'
 					  	'PROGRAM', 'BEGIN', 'END', 'VAR', '{Procedures/Functions}', 'FUNCTION',
 					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE',
 					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer']
@@ -50,7 +51,7 @@ DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ':=', 
 
 # helper functions
 def isSymbol(char):
-	if char in ["-", "+", "(", ")", "*", "/", ";", ".", ":", "=", "<", ">"]:
+	if char in ["-", "+", "(", ")", "*", "/", ";", ".", ":", "=", "<", ">", ',']:
 		return True
 	else:
 		return False
@@ -67,7 +68,7 @@ def isSymbol(char):
 # program ::= <program heading> <block> "."
 # program heading ::= "program" <identifier> ";"
 # block ::= [<declaration part>] <statement part>
-# declaration part ::= [<variable declaration part>] [<procedure and function declaration part]
+# declaration part ::= [<variable declaration part>] [<procedure and function declaration part>]
 # variable declaration part ::= "var" <variable declaration> ";" {<variable declaration> ";"}
 # variable declaration ::= <identifier> ":" <type>     # Fred note - only handling one identifier at a time, not a sequence
 # <type> ::= "integer"                                 # Fred note - only handling integers at this point
@@ -88,7 +89,9 @@ def isSymbol(char):
 # <expression> ::= <simple expression> [<relational operator> <simple expression>]
 # <simple expression> ::= <term> { <addition operator> <term> }    # Fred note - official BNF handles minus here, I do it in <integer>
 # <term> ::= <factor> { <multiplication operator> <factor> }
-# <factor> ::= <integer> | <variable identifier> | "(" <simple expression> ")"  # Fred note - official BNF allows <expression> here
+# <factor> ::= <integer> | <variable identifier> | <function designator> | "(" <simple expression> ")"  # Fred note - official BNF allows <expression> here
+# <function designator> ::= <function identifier> <actual parameter list>
+# <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
 # <string literal> = "'" {<any character other than apostrophe or quote mark>} "'"
 # <variable identifier> ::= <identifier>
@@ -123,7 +126,17 @@ class ProcFuncHeading:
 	def __init__(self, name):
 		self.name = name
 		self.parameters = []
-		self.returntype = returntype
+		self.returntype = None
+
+	def getParameterPos(self, paramName):
+		ret = None
+		i = 0
+		while i < len(self.parameters):
+			if self.parameters[i].name == paramName:
+				ret = i
+				break
+			i += 1
+		return ret
 
 class AST():
 	def __init__(self, token):
@@ -154,42 +167,55 @@ class AST():
 			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist():
 				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
 			else:
-				assembler.variable.symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_FUNCTION, assembler.generate_variable_name("func"))
+				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_FUNCTION, assembler.generate_variable_name("func"), self.procFuncHeading)
 			# eventually - functions will have variable declarations themselves, will need to handle that here.
 			# but those will be local - the procFuncHeading object will need its own symbol table.
 		else:
 			for child in self.children:
 				child.find_variable_declarations(assembler)
 
-	def assemble(self, assembler, localSymbolTable = None):
+	def assembleProcsAndFunctions(self, assembler):
+		if self.token.type == TOKEN_FUNCTION:
+			# first six integer arguments are passed in RDI, RSI, RDX, RCX, R8, and R9 in that order
+			# integer return values are passed in RAX
+			functionsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
+			assembler.emitlabel(functionsymbol.label)
+			self.children[0].assemble(assembler,
+									  functionsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
+			assembler.emitcode("RET")
+		else:
+			for child in self.children:
+				child.assembleProcsAndFunctions(assembler)
+
+	def assemble(self, assembler, procFuncHeadingScope):
 		if self.token.type == TOKEN_INT:
 			assembler.emitcode("MOV RAX, " + str(self.token.value))
 		elif self.token.type == TOKEN_PLUS:
-			self.children[0].assemble(assembler)
+			self.children[0].assemble(assembler, procFuncHeadingScope)
 			# RAX now contains value of the first child
 			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler)
+			self.children[1].assemble(assembler, procFuncHeadingScope)
 			# RAX now contains value of the second child
 			assembler.emitcode("POP RCX")
 			# RCX now contains value of the first child
 			assembler.emitcode("ADD RAX, RCX")
 		elif self.token.type == TOKEN_MINUS:
-			self.children[0].assemble(assembler)
+			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler)
+			self.children[1].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("POP RCX")
 			assembler.emitcode("SUB RCX, RAX")
 			assembler.emitcode("MOV RAX, RCX")  # it might be quicker to sub RAX, RCX and NEG RAX.
 		elif self.token.type == TOKEN_MULT:
-			self.children[0].assemble(assembler)
+			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler)
+			self.children[1].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("POP RCX")
 			assembler.emitcode("IMUL RAX, RCX")
 		elif self.token.type == TOKEN_IDIV:
-			self.children[0].assemble(assembler)
+			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler)
+			self.children[1].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("MOV RCX, RAX")
 			assembler.emitcode("POP RAX")
 			assembler.emitcode("XOR RDX, RDX")  # RDX is concatenated with RAX to do division
@@ -210,9 +236,9 @@ class AST():
 			else:
 				raise ValueError ("Invalid Relational Operator : " + DEBUG_TOKENDISPLAY[self.token.type])
 
-			self.children[0].assemble(assembler)
+			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler)
+			self.children[1].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("POP RCX")
 			assembler.emitcode("CMP RCX, RAX")
 			# tried using CMOVE/CMOVNE but NASM didn't like them
@@ -226,20 +252,20 @@ class AST():
 			assembler.emitlabel(labeldone)
 		elif self.token.type == TOKEN_IF:
 			label = assembler.generate_local_label()
-			self.children[0].assemble(assembler)
+			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("CMP RAX, 0")
 			assembler.emitcode("JE " + label)
 			if len(self.children) == 2:
 				# straight if-then
-				self.children[1].assemble(assembler)
+				self.children[1].assemble(assembler, procFuncHeadingScope)
 				assembler.emitlabel(label)
 			elif len(self.children) == 3:
 				# if-then-else
 				skipelselabel = assembler.generate_local_label()
-				self.children[1].assemble(assembler)
+				self.children[1].assemble(assembler, procFuncHeadingScope)
 				assembler.emitcode("JMP " + skipelselabel)
 				assembler.emitlabel(label)
-				self.children[2].assemble(assembler)
+				self.children[2].assemble(assembler, procFuncHeadingScope)
 				assembler.emitlabel(skipelselabel)
 			else:
 				raise ValueError ("Invalid number of tokens following IF.  Expected 2 or 3, got: " + str(len(self.children)))
@@ -258,43 +284,67 @@ class AST():
 						assembler.emitcode("mov rdx, " + data_name + "Len")
 						assembler.emitcode("syscall")
 				else:
-					child.assemble(assembler)  # the expression should be in RAX
+					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in RAX
 					assembler.emitcode("call _writeINT")
 			if self.token.type == TOKEN_WRITELN:
 				assembler.emitcode("call _writeCRLF")
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
-			symbol = assembler.variable_symbol_table.get(self.token.value)
-			if symbol.type == asm_funcs.SYMBOL_INTEGER:
-				self.children[0].assemble(assembler) # RAX has the value
-				assembler.emitcode("MOV [" + symbol.label + "], RAX")
-			else:
-				raise ValueError ("Invalid variable type :" + vartuple[0])
-		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:
-			symbol = assembler.variable_symbol_table.get(self.token.value)
-			if symbol.type == asm_funcs.SYMBOL_INTEGER:
-				# check the local symbol table first
-				assembler.emitcode("MOV RAX, [" + symbol.label + "]")
-			elif vartuple[0] == "func":
-				# first six integer arguments are passed in RDI, RSI, RDX, RCX, R8, and R9 in that order
-				# integer return values are passed in RAX
-				assembler.emitlabel(vartype[1])
-				self.children[0].assemble(assembler)
-				assembler.emitcode("RET")
 
+			# NEED TO SEE IF THE IDENTIFIER IS THE NAME OF THE FUNCTION!!!
+
+			symbol = assembler.variable_symbol_table.get(self.token.value)
+			if symbol.type == asm_funcs.SYMBOL_INTEGER:
+				self.children[0].assemble(assembler, procFuncHeadingScope) # RAX has the value
+				assembler.emitcode("MOV [" + symbol.label + "], RAX")
+			elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
+				if procFuncHeadingScope is not None:
+					self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX to the value we return
+				else:
+					raise ValueError ("Cannot assign to function outside of function scope: " + symbol.procfuncheading.name)
 			else:
-				raise ValueError ("Invalid variable type :" + vartuple[0])
+				raise ValueError ("Invalid variable type :" + asm_funcs.DEBUG_SYMBOLDISPLAY[symbol.type])
+		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:
+			# is this symbol a function parameter?
+			found_symbol = False
+			if not (procFuncHeadingScope is None):
+				parampos = procFuncHeadingScope.getParameterPos(self.token.value)
+				if not (parampos is None):
+					found_symbol = True
+					assembler.emitcode("MOV RAX, " + asm_funcs.parameterPositionToRegister(parampos))
+
+			if found_symbol == False:
+				symbol = assembler.variable_symbol_table.get(self.token.value)
+				if symbol.type == asm_funcs.SYMBOL_INTEGER:
+					assembler.emitcode("MOV RAX, [" + symbol.label + "]")
+				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
+					# call the function - return value is in RAX
+					# current limitation - 6 parameters max - to fix this, we just need to use relative
+					# stack pointer address in the local symbol table to store where the others are.
+					# the parameters will be the children in the AST
+					# push the rdi, rsi, rdx, rcx, r8, and r9 registers onto the stack (or the ones we need)
+					# put the parameters into those registers
+					# call the function
+					# rax has the return
+					# pop all the registers back
+
+					assembler.preserve_int_registers_for_func_call(len(symbol.procfuncheading.parameters))
+					i = 0
+					while i < len(self.children):
+						self.children[i].assemble(assembler, procFuncHeadingScope)
+						assembler.emitcode("MOV " + asm_funcs.parameterPositionToRegister(i) + ", RAX")
+						i += 1
+					assembler.emitcode("CALL " + symbol.label)
+					assembler.restore_int_registers_after_func_call(len(symbol.procfuncheading.parameters))
+
+				else:
+					raise ValueError ("Invalid variable type :" + vartuple[0])
 		elif self.token.type == TOKEN_FUNCTION:
-			# push the rdi, rsi, rdx, rcx, r8, and r9 registers onto the stack (or the ones we need)
-			# put the parameters into those registers
-			# call the function
-			# rax has the return
-			# pop all the registers back
-			pass
+			pass # function declarations are asseembled earlier
 		elif self.token.type == TOKEN_VAR:
 			pass  # variable declarations are assembled earlier
 		elif self.token.type in [TOKEN_BEGIN, TOKEN_PROCFUNC_DECLARATION_PART, TOKEN_PROGRAM] :
 			for child in self.children:
-				child.assemble(assembler)
+				child.assemble(assembler, procFuncHeadingScope)
 		else:
 			raise ValueError("Unexpected Token :" + DEBUG_TOKENDISPLAY[self.token.type])
 
@@ -457,6 +507,8 @@ class Tokenizer:
 					ret = Token(TOKEN_PERIOD, None)
 				elif sym == ":":
 					ret = Token(TOKEN_COLON, None)
+				elif sym == ",":
+					ret = Token(TOKEN_COMMA, None)
 				elif sym == ":=":
 					ret = Token(TOKEN_ASSIGNMENT_OPERATOR, None)
 				elif sym == "=":
@@ -506,21 +558,32 @@ class Parser:
 
 
 	def parseFactor(self):
-		# <factor> ::= <integer> | <variable identifier> | "(" <simple expression> ")"
+		# <factor> ::= <integer> | <variable identifier> | <function designator> | "(" <simple expression> ")"
 		# <integer> ::= ["-"] <digit> {<digit>}
+		# <function designator> ::= <function identifier> <actual parameter list>
+		# <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
+
 		if self.tokenizer.peek() == "(":
 			# parens do not go in the AST
-			lparen = self.tokenizer.getNextToken()
+			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
 			ret = self.parseSimpleExpression()
-			if self.tokenizer.peek() != ")":
-				self.raiseParseError("Right Paren expected")
-			rparen = self.tokenizer.getNextToken()
-			return (ret)
+			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 		else:
 			factor = self.tokenizer.getNextToken()
 			if factor.type == TOKEN_VARIABLE_IDENTIFIER:
 				# we are evaluating here
 				factor.type = TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION
+				ret = AST(factor)
+
+				if self.tokenizer.peek() == "(":
+					# this is a function or procedure invocation
+					lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+					ret.children.append(self.parseSimpleExpression())
+					while self.tokenizer.peek() == ",":
+						comma = self.tokenizer.getNextToken(TOKEN_COMMA)
+						ret.children.append(self.parseSimpleExpression())
+					rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+
 			else:
 				multby = 1  # will set this negative if it's a negative number
 				if factor.type == TOKEN_MINUS:
@@ -529,9 +592,9 @@ class Parser:
 				if factor.type != TOKEN_INT:
 					self.raiseParseError("Integer expected - instead got " + DEBUG_TOKENDISPLAY[factor.type])
 				factor.value = factor.value * multby
+				ret = AST(factor)
 
-
-			return AST(factor)
+		return ret
 
 	def parseTerm(self):
 		# <term> ::= <factor> { <multiplication operator> <factor> }
@@ -651,11 +714,15 @@ class Parser:
 		done = False
 		while not done:
 			# I do not know how to recognize the end of the variable section without looking ahead
-			# to the next section, which is the <statement part>.  <statement part> starts with "begin".
+			# to the next section, which is either <procedure and function declaration part> or
+			# the <statement part>.  <statement part> starts with "begin".
+			# <procedure and function declaration part> starts with "function" now. (procedures allowed later)
 			# So, we are done when the next 6 characters are BEGIN plus whitespace.
 			# There likely is a better way to do this.
-			nextsix = self.tokenizer.peekMulti(6).lower()
-			if nextsix[0:5] == 'begin' and nextsix[5].isspace():
+			nextnine = self.tokenizer.peekMulti(9).lower()
+			if nextnine[0:5] == 'begin' and nextnine[5].isspace():
+				done = True
+			elif nextnine[0:8] == "function" and nextnine[8].isspace():
 				done = True
 			else:
 				ident_token = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
@@ -686,23 +753,23 @@ class Parser:
 			# so this is a bit lazy, but the "bug" of allowing () seems harmless.  I could change the
 			# grammar if desired.
 			while self.tokenizer.peek() != ")":
-				paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
+				paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER).value
 				colon = self.tokenizer.getNextToken(TOKEN_COLON)
-				paramtype = self.tokenizer.getNextToken()
-				if paramtype != TOKEN_VARIABLE_TYPE_INTEGER:
-					raiseParseError("Expected Integer Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtype))
-				funcheading.parameters.append(ProcFuncParameter(paramname, paramtype))
+				paramtypetoken = self.tokenizer.getNextToken()
+				if paramtypetoken.type != TOKEN_VARIABLE_TYPE_INTEGER:
+					self.raiseParseError("Expected Integer Function Parameter Type, got " + DEBUG_TOKENDISPLAY[paramtype.type])
+				funcheading.parameters.append(ProcFuncParameter(paramname, paramtypetoken.type))
 
 			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		functype = self.tokenizer.getNextToken()
-		if functype == TOKEN_VARIABLE_TYPE_INTEGER:
+		if functype.type == TOKEN_VARIABLE_TYPE_INTEGER:
 			funcheading.returntype = functype
 
 		else:
-			raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype))
-
+			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype.type))
+		semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 		ret = AST(functoken)
 		ret.procFuncHeading = funcheading
 
@@ -714,8 +781,9 @@ class Parser:
 		# procedure and function declaration part ::= {<function declaration> ";"}
 		ret = AST(Token(TOKEN_PROCFUNC_DECLARATION_PART, None))  # this is not a real token, it just holds procs and functions
 		nextnine = self.tokenizer.peekMulti(9).lower()
-		while nextnine[0:8] == "function" and nextnine[9].isspace():
-			ret.children.append(parseFunctionDeclaration())
+		while nextnine[0:8] == "function" and nextnine[8].isspace():
+			ret.children.append(self.parseFunctionDeclaration())
+			semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 			nextnine = self.tokenizer.peekMulti(9).lower()
 		return ret
 
@@ -736,7 +804,7 @@ class Parser:
 			variable_declarations = None
 
 		nextnine = self.tokenizer.peekMulti(9).lower()
-		if nextnine[0:8] == "function" and nextnine[9].isspace():
+		if nextnine[0:8] == "function" and nextnine[8].isspace():
 			function_declarations = self.parseProcedureFunctionDeclarationPart()
 		else:
 			function_declarations = None
@@ -760,7 +828,7 @@ class Parser:
 		self.AST = self.parseProgram()
 
 	def assembleAST(self):
-		self.AST.assemble(self.assembler)
+		self.AST.assemble(self.assembler, None)  # None = Global Scope
 
 	def assemble(self, filename):
 		self.assembler = asm_funcs.Assembler(filename)
@@ -770,8 +838,10 @@ class Parser:
 		self.assembler.setup_bss()
 		self.assembler.setup_data()
 		self.assembler.setup_text()
-		self.assembler.setup_start()
 
+		self.AST.assembleProcsAndFunctions(self.assembler)
+
+		self.assembler.setup_start()
 		self.assembleAST()
 
 		self.assembler.emit_terminate()

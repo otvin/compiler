@@ -3,10 +3,33 @@ import os
 SYMBOL_FUNCTION = 0
 SYMBOL_INTEGER = 1
 
+DEBUG_SYMBOLDISPLAY = ["FUNCTION", "INT"]
+
+def parameterPositionToRegister(pos):
+	# converts the position in the function parameter list to a register
+	# once we get > 6 parameters it will be stack pointer offsets
+	if pos == 0:
+		ret = "RDI"
+	elif pos == 1:
+		ret = "RSI"
+	elif pos == 2:
+		ret = "RDX"
+	elif pos == 3:
+		ret = "RCX"
+	elif pos == 4:
+		ret = "R8"
+	elif pos == 5:
+		ret = "R9"
+	else:
+		raise ValueError ("Invalid Parameter Position " + str(pos))
+
+	return ret
+
 class SymbolData:
-	def __init__(self, type, label):
+	def __init__(self, type, label, procFuncHeading = None):
 		self.type = type
 		self.label = label
+		self.procfuncheading = procFuncHeading
 
 class SymbolTable:
 	def __init__ (self):
@@ -18,13 +41,19 @@ class SymbolTable:
 		else:
 			return False
 
-	def insert(self, symbolname, symboltype, symbollabel):
+	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
 		if self.exists(symbolname):
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
 
-		self.symbols[symbolname] = SymbolData(symboltype, symbollabel)
+		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
 
 	def get(self, symbolname):
+		if symbolname not in self.symbols:
+			if self.symbols is None:
+				symbolstr = "None"
+			else:
+				symbolstr = str(self.symbols)
+			raise KeyError ("Symbol " + symbolname + " not present\n" + symbolstr)
 		return self.symbols[symbolname]
 
 	def symbollist(self):
@@ -71,6 +100,36 @@ class Assembler:
 		ret = ".L" + str(self.next_local_label_index)
 		self.next_local_label_index += 1
 		return ret
+
+	def preserve_int_registers_for_func_call(self, num_registers):
+		# push the rdi, rsi, rdx, rcx, r8, and r9
+		if num_registers >= 1:
+			self.emitcode("PUSH RDI")
+			if num_registers >= 2:
+				self.emitcode("PUSH RSI")
+				if num_registers >= 3:
+					self.emitcode("PUSH RDX")
+					if num_registers >= 4:
+						self.emitcode("PUSH RCX")
+						if num_registers >= 5:
+							self.emitcode("PUSH R8")
+							if num_registers >= 6:
+								self.emitcode("PUSH R9")
+
+	def restore_int_registers_after_func_call(self, num_registers):
+		if num_registers >=6:
+			self.emitcode("POP R9")
+		if num_registers >=5:
+			self.emitcode("POP R8")
+		if num_registers >=4:
+			self.emitcode("POP RCX")
+		if num_registers >=3:
+			self.emitcode("POP RDX")
+		if num_registers >=2:
+			self.emitcode("POP RSI")
+		if num_registers >=1:
+			self.emitcode("POP RDI")
+
 
 	def setup_bss(self):
 		self.emitsection("section .bss")
