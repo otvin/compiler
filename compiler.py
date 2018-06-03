@@ -125,8 +125,9 @@ class ProcFuncParameter:
 class ProcFuncHeading:
 	def __init__(self, name):
 		self.name = name
-		self.parameters = []
-		self.returntype = None
+		self.parameters = []  # will be a list of ProcFuncParameters
+		self.localvariables = None  # will be an AST
+		self.returntype = None  # will be a token type
 
 	def getParameterPos(self, paramName):
 		ret = None
@@ -299,7 +300,10 @@ class AST():
 				assembler.emitcode("MOV [" + symbol.label + "], RAX")
 			elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 				if procFuncHeadingScope is not None:
-					self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX to the value we return
+					if self.token.value == procFuncHeadingScope.name:
+						self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX to the value we return
+					else:
+						raise ValueError ("Cannot assign to a function inside another function: " + symbol.procfuncheading.name)
 				else:
 					raise ValueError ("Cannot assign to function outside of function scope: " + symbol.procfuncheading.name)
 			else:
@@ -779,13 +783,15 @@ class Parser:
 		functype = self.tokenizer.getNextToken()
 		if functype.type == TOKEN_VARIABLE_TYPE_INTEGER:
 			funcheading.returntype = functype
-
 		else:
 			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype.type))
 		semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+
+		if self.tokenizer.peekMatchStringAndSpace("var"):
+			funcheading.localvariables = self.parseVariableDeclarations()
+
 		ret = AST(functoken)
 		ret.procFuncHeading = funcheading
-
 		ret.children.append(self.parseStatementPart())
 
 		return ret
