@@ -9,50 +9,56 @@ def dotest(infilename, resultfilename):
 	global NUM_ATTEMPTS
 	global NUM_SUCCESSES
 
-	assemblyfilename = infilename[:-4] + ".asm"
-	objectfilename = infilename[:-4] + ".o"
-	exefilename = infilename[:-4]
-	testoutputfilename = exefilename + ".testoutput"
-
-	f = open(infilename, "r")
-	t = compiler.Tokenizer(f.read())
-	f.close()
-
-	p = compiler.Parser(t)
-	p.parse()
-	p.assemble(assemblyfilename)
-	c = asm_funcs.Compiler(assemblyfilename, objectfilename)
-	c.do_compile()
-	l = asm_funcs.Linker(objectfilename, exefilename)
-	l.do_link()
-
-	os.system("./" + exefilename + " > " + testoutputfilename)
-
-	testfile = open(testoutputfilename, "r")
-	testvalue = testfile.read()
-	testfile.close()
-
-	resultfile = open(resultfilename, "r")
-	resultvalue = resultfile.read()
-	resultfile.close()
-
 	NUM_ATTEMPTS += 1
 
-	if resultvalue == testvalue:
-		print("PASS: " + infilename)
-		NUM_SUCCESSES += 1
+	try:
+		assemblyfilename = infilename[:-4] + ".asm"
+		objectfilename = infilename[:-4] + ".o"
+		exefilename = infilename[:-4]
+		testoutputfilename = exefilename + ".testoutput"
 
-		# remove the files from passed tests; we will leave the files from failed tests so we can debug
-		os.system("rm " + assemblyfilename)
-		os.system("rm " + objectfilename)
-		os.system("rm " + exefilename)
-		os.system("rm " + testoutputfilename)
+		f = open(infilename, "r")
+		t = compiler.Tokenizer(f.read())
+		f.close()
 
-		return True
-	else:
+		p = compiler.Parser(t)
+		p.parse()
+		p.assemble(assemblyfilename)
+		c = asm_funcs.Compiler(assemblyfilename, objectfilename)
+		c.do_compile()
+		l = asm_funcs.Linker(objectfilename, exefilename)
+		l.do_link()
+
+		os.system("./" + exefilename + " > " + testoutputfilename)
+
+		testfile = open(testoutputfilename, "r")
+		testvalue = testfile.read()
+		testfile.close()
+
+		resultfile = open(resultfilename, "r")
+		resultvalue = resultfile.read()
+		resultfile.close()
+
+
+
+		if resultvalue == testvalue:
+			print("PASS: " + infilename)
+			NUM_SUCCESSES += 1
+
+			# remove the files from passed tests; we will leave the files from failed tests so we can debug
+			os.system("rm " + assemblyfilename)
+			os.system("rm " + objectfilename)
+			os.system("rm " + exefilename)
+			os.system("rm " + testoutputfilename)
+
+			return True
+		else:
+			print("FAIL: " + infilename)
+			return False
+	except Exception as e:
 		print("FAIL: " + infilename)
+		print(e)
 		return False
-
 
 
 def main():
@@ -71,6 +77,10 @@ def main():
 	f = dotest("compiler_test_files/test10.pas", "compiler_test_files/test10.out")
 	f = dotest("compiler_test_files/test11.pas", "compiler_test_files/test11.out")
 	f = dotest("compiler_test_files/test_recursion.pas", "compiler_test_files/test_recursion.out")
+	f = dotest("compiler_test_files/test11a.pas", "compiler_test_files/test11a.out")
+	f = dotest("compiler_test_files/test13.pas", "compiler_test_files/test13.out")
+	f = dotest("compiler_test_files/test12a.pas", "compiler_test_files/test12a.out")
+	f = dotest("compiler_test_files/test12c.pas", "compiler_test_files/test12c.out")
 
 	print ("Tests Attempted: " + str(NUM_ATTEMPTS))
 	print ("Tests Succeeded: " + str(NUM_SUCCESSES))

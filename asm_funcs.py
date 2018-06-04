@@ -80,8 +80,11 @@ class Assembler:
 	def emitsection(self,s):
 		self.emitln(s)
 
-	def emitlabel(self, s):
-		self.emitln(s + ":")
+	def emitlabel(self, s, comment = None):
+		if comment == None:
+			self.emitln(s + ":")
+		else:
+			self.emitln(s + ":			;" + comment)
 
 	def cleanup(self):
 		self.asm_file.close()

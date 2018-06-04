@@ -1,5 +1,6 @@
 import sys
 import asm_funcs
+import copy
 
 # constants for token types
 TOKEN_INT = 0
@@ -126,7 +127,8 @@ class ProcFuncHeading:
 	def __init__(self, name):
 		self.name = name
 		self.parameters = []  # will be a list of ProcFuncParameters
-		self.localvariables = None  # will be an AST
+		self.localvariableAST = None
+		self.localvariableSymbolTable = None
 		self.returntype = None  # will be a token type
 
 	def getParameterPos(self, paramName):
@@ -180,9 +182,28 @@ class AST():
 			# first six integer arguments are passed in RDI, RSI, RDX, RCX, R8, and R9 in that order
 			# integer return values are passed in RAX
 			functionsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
-			assembler.emitlabel(functionsymbol.label)
-			self.children[0].assemble(assembler,
-									  functionsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
+			assembler.emitlabel(functionsymbol.label, "function: " + self.procFuncHeading.name)
+			# allocate space for local variables
+			localvarbytesneeded = 0
+			if not (self.procFuncHeading.localvariableAST is None):
+				self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
+				for i in self.procFuncHeading.localvariableAST.children:  # localvariables is an AST with each var as a child
+					if i.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
+						localvarbytesneeded += 8
+						self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, i.token.type, '[RBP - ' + str(localvarbytesneeded) + ']')
+					else:
+						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY[i.type])
+			if localvarbytesneeded > 0:
+				assembler.emitcode("MOV RBP, RSP			; save stack pointer")
+				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded) + "			; allocate local variable storage")
+				assembler.emitcode('AND RSP, QWORD -16			; 16-byte align stack pointer')
+
+
+			self.children[0].assemble(assembler, functionsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
+
+			if localvarbytesneeded > 0:
+				assembler.emitcode("MOV RSP, RBP			; restore stack pointer")
+
 			assembler.emitcode("RET")
 		else:
 			for child in self.children:
@@ -279,43 +300,83 @@ class AST():
 						raise ValueError ("No literal for string :" + child.token.value)
 					else:
 						data_name = assembler.string_literals[child.token.value]
+						assembler.emitcode("push rax")
+						assembler.emitcode("push rdi")
+						assembler.emitcode("push rsi")
+						assembler.emitcode("push rdx")
 						assembler.emitcode("mov rax, 1")
 						assembler.emitcode("mov rdi, 1")
 						assembler.emitcode("mov rsi, " + data_name)
 						assembler.emitcode("mov rdx, " + data_name + "Len")
 						assembler.emitcode("syscall")
+						assembler.emitcode("pop rdx")
+						assembler.emitcode("pop rsi")
+						assembler.emitcode("pop rdi")
+						assembler.emitcode("pop rax")
 				else:
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in RAX
+					assembler.emitcode("push rdi")
 					assembler.emitcode("mov rdi, rax") # first parameter of functions should be in RDI
 					assembler.emitcode("call _writeINT")
+					assembler.emitcode("pop rdi")
 			if self.token.type == TOKEN_WRITELN:
+				assembler.emitcode("push rax")
+				assembler.emitcode("push rdi")
+				assembler.emitcode("push rsi")
+				assembler.emitcode("push rdx")
 				assembler.emitcode("call _writeCRLF")
+				assembler.emitcode("pop rdx")
+				assembler.emitcode("pop rsi")
+				assembler.emitcode("pop rdi")
+				assembler.emitcode("pop rax")
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
 
-			# NEED TO SEE IF THE IDENTIFIER IS THE NAME OF THE FUNCTION!!!
 
-			symbol = assembler.variable_symbol_table.get(self.token.value)
-			if symbol.type == asm_funcs.SYMBOL_INTEGER:
-				self.children[0].assemble(assembler, procFuncHeadingScope) # RAX has the value
-				assembler.emitcode("MOV [" + symbol.label + "], RAX")
-			elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
-				if procFuncHeadingScope is not None:
-					if self.token.value == procFuncHeadingScope.name:
-						self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX to the value we return
-					else:
-						raise ValueError ("Cannot assign to a function inside another function: " + symbol.procfuncheading.name)
+			found_symbol = False
+			if not (procFuncHeadingScope is None):
+				parampos = procFuncHeadingScope.getParameterPos(self.token.value)
+				if not (parampos is None):
+					# TODO - if we have parameter types other than Integer, we need to do more logic here
+					found_symbol = True
+					self.children[0].assemble(assembler, procFuncHeadingScope)
+					assembler.emitcode("MOV " + asm_funcs.parameterPositionToRegister(parampos) + ", RAX")
 				else:
-					raise ValueError ("Cannot assign to function outside of function scope: " + symbol.procfuncheading.name)
-			else:
-				raise ValueError ("Invalid variable type :" + asm_funcs.DEBUG_SYMBOLDISPLAY[symbol.type])
+					# If this is a local variable in a function/proc we refer to it via the offset from RBP
+					if not (procFuncHeadingScope.localvariableSymbolTable is None):
+						if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
+							found_symbol = True
+							self.children[0].assemble(assembler, procFuncHeadingScope)
+							assembler.emitcode("MOV " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", RAX")
+
+			if found_symbol == False:
+				symbol = assembler.variable_symbol_table.get(self.token.value)
+				if symbol.type == asm_funcs.SYMBOL_INTEGER:
+					self.children[0].assemble(assembler, procFuncHeadingScope) # RAX has the value
+					assembler.emitcode("MOV [" + symbol.label + "], RAX")
+				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
+					if procFuncHeadingScope is not None:
+						if self.token.value == procFuncHeadingScope.name:
+							self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX to the value we return
+						else:
+							raise ValueError ("Cannot assign to a function inside another function: " + symbol.procfuncheading.name)
+					else:
+						raise ValueError ("Cannot assign to function outside of function scope: " + symbol.procfuncheading.name)
+				else:
+					raise ValueError ("Invalid variable type :" + asm_funcs.DEBUG_SYMBOLDISPLAY[symbol.type])
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:
-			# is this symbol a function parameter?
+			# is this symbol a function parameter or local variable?
 			found_symbol = False
 			if not (procFuncHeadingScope is None):
 				parampos = procFuncHeadingScope.getParameterPos(self.token.value)
 				if not (parampos is None):
 					found_symbol = True
+					# TODO - if we take parameter types other than Integer, we need to do more logic here.
 					assembler.emitcode("MOV RAX, " + asm_funcs.parameterPositionToRegister(parampos))
+				else:
+					if not (procFuncHeadingScope.localvariableSymbolTable is None):
+						if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
+							found_symbol = True
+							assembler.emitcode("MOV RAX, " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label)
 
 			if found_symbol == False:
 				symbol = assembler.variable_symbol_table.get(self.token.value)
@@ -333,6 +394,25 @@ class AST():
 					# pop all the registers back
 
 					assembler.preserve_int_registers_for_func_call(len(symbol.procfuncheading.parameters))
+
+					# copy the procFuncHeadingScope - removing the local variable symbol table.  Local variables
+					# do not stay in scope when calling other functions, as we do not do functions declared
+					# inside other functions in this compiler.
+
+					# this won't work.  Imagine this:
+					# function f()...
+					# function g()...
+					# function h()...
+					# function i()
+					#    var foo
+					#    i := f(g(h(foo)))
+
+					#if not (procFuncHeadingScope is None):
+					#	newProcFuncHeadingScope = copy.deepcopy(procFuncHeadingScope)
+					#	newProcFuncHeadingScope.localVariableSymbolTable = None
+					#else:
+					#	newProcFuncHeadingScope = None
+
 					i = 0
 					while i < len(self.children):
 						self.children[i].assemble(assembler, procFuncHeadingScope)
@@ -767,7 +847,7 @@ class Parser:
 		# <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
 
 		functoken = self.tokenizer.getNextToken(TOKEN_FUNCTION)
-		funcheading = ProcFuncHeading(self.tokenizer.getIdentifier())
+		funcheading = ProcFuncHeading(self.tokenizer.getIdentifier().lower())
 
 
 		if self.tokenizer.peek() == "(":
@@ -788,7 +868,7 @@ class Parser:
 		semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
 		if self.tokenizer.peekMatchStringAndSpace("var"):
-			funcheading.localvariables = self.parseVariableDeclarations()
+			funcheading.localvariableAST = self.parseVariableDeclarations()
 
 		ret = AST(functoken)
 		ret.procFuncHeading = funcheading

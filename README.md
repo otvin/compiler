@@ -24,7 +24,7 @@ Text in /* */ is a comment
 <procedure and function declaration part> ::= {<function declaration> ";"}
 <function declaration> ::= <function heading> ";" <function body>
 <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
-<function body> ::= <statement part> 				   /* Fred note - we are vastly simplifying functions.  No local vars, no nested functions */
+<function body> ::= [<variable declaration part>] <statement part>
 <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 parameters max at this time */
 <statement part> ::= "begin" <statement sequence> "end"
 <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
@@ -57,7 +57,7 @@ In other words, it takes a single ```program``` statement followed by an optiona
 
 The compiler will ignore comments between open and close curly braces ```{``` and ```}```, anywhere in the code.  So ``` 4 + {random comment} 2``` will evaluate to ```6```.
 
-Recursive functions are supported.  See ```test_recursion.pas``` in the test suite for the Fibonacci sequence.
+Recursive functions are supported.  See ```test_recursion.pas``` in the test suite for the Fibonacci sequence.  Functions can have local variables, but the main ```begin..end``` for the program cannot.  The main can only reference global variables.
 
 Under the covers, the program first creates an Abstract Syntax Tree (AST) from the expression, then generates the assembly code from the AST.  Currently, the AST knows how to generate its own assembly code even though that overloads that class a bit, because it's easier to generate it recursively from within a single function if it's a member of that class.
 
@@ -72,7 +72,23 @@ Execute ```python3 compiler_test.py```
 
 ### Known bugs:
 
+If a first function calls a second function, and the second function takes multiple parameters, and the first function passes into the second function two expressions, each which uses one of the first function's parameters, then the second expression is getting corrupted.  You can see this in test12c.pas in the test suite:
+
+```
+function r(z:integer):integer;
+begin
+    r:=q(z+2,z-2)
+end;
+```
+
+The assembly generated here is clobbering a register.  
+ 
+
+Back-to-back comments will not parse.  Example:
+``` {this comment} {that comment}``` in your code will give you a not-particularly-meaningful Python error ```local variable 'ret' referenced before assignment.```
+
 Previously, when redirecting the output of executables to a file, string literals will pipe to the file, but integers printed to stdout will not.  This occurs even if both stdout and stderr are redirected to the file.  I fixed this by changing the integer print to use an included library nasm64, cited below.  Now, the bug is that if a ```write``` is called on either a string or number, that value will make it to stdout.  However, the next ```write``` or ```writeln``` statement will not, until a ```writeln``` is called.  That will flush something and subsequent strings will make it to the file.  This is truly bizarre.  Thus, the files in the compiler test suite do not exercise ```write```.
+
 
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.
@@ -80,8 +96,6 @@ While I have read numerous stack overflow and other posts, there are some source
 Jack Crenshaw's Introduction to Compilers, as modified by Pascal Programming for Schools to target the x86 - http://www.pp4s.co.uk/main/tu-trans-comp-jc-01.html
 
 Ruslan Spivak "Let's Build a Simple Interpreter" - https://ruslanspivak.com/lsbasi-part1/
-
-x86_64 Linux Assembly Tutorials by "kupala" - https://www.youtube.com/watch?v=VQAKkuLL31g&list=PLetF-YjXm-sCH6FrTz4AQhfH6INDQvQSn
 
 I have referenced multiple BNF for Pascal but the one I settled on is here: http://www.fit.vutbr.cz/study/courses/APR/public/ebnf.html - I used this as the starting point and modified it for my grammar.
 
