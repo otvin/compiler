@@ -142,8 +142,9 @@ class ProcFuncHeading:
 		return ret
 
 class AST():
-	def __init__(self, token):
+	def __init__(self, token, comment = None):
 		self.token = token
+		self.comment = comment # will get put on the line emitted in the assembly code if populated.
 		self.procFuncHeading = None  # only used for procs and funcs
 		self.children = []
 
@@ -194,15 +195,15 @@ class AST():
 					else:
 						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY[i.type])
 			if localvarbytesneeded > 0:
-				assembler.emitcode("MOV RBP, RSP			; save stack pointer")
-				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded) + "			; allocate local variable storage")
-				assembler.emitcode('AND RSP, QWORD -16			; 16-byte align stack pointer')
+				assembler.emitcode("MOV RBP, RSP", "save stack pointer")
+				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local variable storage")
+				assembler.emitcode('AND RSP, QWORD -16' , '16-byte align stack pointer')
 
 
 			self.children[0].assemble(assembler, functionsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
 
 			if localvarbytesneeded > 0:
-				assembler.emitcode("MOV RSP, RBP			; restore stack pointer")
+				assembler.emitcode("MOV RSP, RBP", "restore stack pointer")
 
 			assembler.emitcode("RET")
 		else:
@@ -274,19 +275,23 @@ class AST():
 			assembler.emitlabel(labeldone)
 		elif self.token.type == TOKEN_IF:
 			label = assembler.generate_local_label()
+			assembler.emitcomment(self.comment + '...')
 			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("CMP RAX, 0")
 			assembler.emitcode("JE " + label)
 			if len(self.children) == 2:
 				# straight if-then
+				assembler.emitcomment('... THEN ...')
 				self.children[1].assemble(assembler, procFuncHeadingScope)
 				assembler.emitlabel(label)
 			elif len(self.children) == 3:
 				# if-then-else
+				assembler.emitcomment('... THEN ...')
 				skipelselabel = assembler.generate_local_label()
 				self.children[1].assemble(assembler, procFuncHeadingScope)
 				assembler.emitcode("JMP " + skipelselabel)
 				assembler.emitlabel(label)
+				assembler.emitcomment('... ELSE ...')
 				self.children[2].assemble(assembler, procFuncHeadingScope)
 				assembler.emitlabel(skipelselabel)
 			else:
@@ -294,6 +299,7 @@ class AST():
 
 
 		elif self.token.type == TOKEN_WRITELN or self.token.type == TOKEN_WRITE:
+			assembler.emitcomment(self.comment)
 			for child in self.children:
 				if child.token.type == TOKEN_STRING:
 					if not (child.token.value in assembler.string_literals):
@@ -317,7 +323,7 @@ class AST():
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in RAX
 					assembler.emitcode("push rdi")
 					assembler.emitcode("mov rdi, rax") # first parameter of functions should be in RDI
-					assembler.emitcode("call _writeINT")
+					assembler.emitcode("call prtdec","imported from nsm64")
 					assembler.emitcode("pop rdi")
 			if self.token.type == TOKEN_WRITELN:
 				assembler.emitcode("push rax")
@@ -330,8 +336,7 @@ class AST():
 				assembler.emitcode("pop rdi")
 				assembler.emitcode("pop rax")
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
-
-
+			assembler.emitcomment(self.comment)
 			found_symbol = False
 			if not (procFuncHeadingScope is None):
 				parampos = procFuncHeadingScope.getParameterPos(self.token.value)
@@ -418,7 +423,7 @@ class AST():
 						self.children[i].assemble(assembler, procFuncHeadingScope)
 						assembler.emitcode("MOV " + asm_funcs.parameterPositionToRegister(i) + ", RAX")
 						i += 1
-					assembler.emitcode("CALL " + symbol.label)
+					assembler.emitcode("CALL " + symbol.label, "invoke function " + symbol.procfuncheading.name + '()')
 					assembler.restore_int_registers_after_func_call(len(symbol.procfuncheading.parameters))
 
 				else:
@@ -729,8 +734,11 @@ class Parser:
 
 	def parseIfStatement(self):
 		# <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
+		startpos = self.tokenizer.curPos
 		ret = AST(self.tokenizer.getNextToken(TOKEN_IF))
 		expression = self.parseExpression()
+		endpos = self.tokenizer.curPos
+		ret.comment = self.tokenizer.text[startpos:endpos]
 		ret.children.append(expression)
 		tok = self.tokenizer.getNextToken(TOKEN_THEN)
 		statement = self.parseStatement()
@@ -758,6 +766,7 @@ class Parser:
 		elif self.tokenizer.peekMatchStringAndSpace("if"):
 			ret = self.parseIfStatement()
 		else:
+			startpos = self.tokenizer.curPos
 			tok = self.tokenizer.getNextToken()
 
 			if tok.type == TOKEN_WRITELN or tok.type == TOKEN_WRITE:
@@ -778,6 +787,8 @@ class Parser:
 				ret.children.append(self.parseSimpleExpression())
 			else:
 				self.raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY[tok.type])
+			endpos = self.tokenizer.curPos
+			ret.comment = self.tokenizer.text[startpos:endpos]
 
 		return ret
 

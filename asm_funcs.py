@@ -25,6 +25,30 @@ def parameterPositionToRegister(pos):
 
 	return ret
 
+def codeToASMComment(code):
+	# takes a block of code and converts it to a comment that can be added to the line in the assembly
+	# remove newlines
+	c = code.replace('\n','')
+	c = c.replace('\t','')
+	# remove comments
+	i = 0
+	c2 = ''
+	while i < len(c):
+		while c[i] != '{':
+			c2 += c[i]
+			i += 1
+			if i >= len(c):
+				return c2
+		while c[i] != '}':
+			i += 1
+			if i >= len(c):
+				return c2
+		if c[i] == '}':
+			i += 1
+			if i >= len(c):
+				return c2
+	return c2
+
 class SymbolData:
 	def __init__(self, type, label, procFuncHeading = None):
 		self.type = type
@@ -74,17 +98,23 @@ class Assembler:
 	def emitln(self, s):
 		self.emit(s + '\n')
 
-	def emitcode(self, s):
-		self.emitln('\t' + s)
-
+	def emitcode(self, s, comment = None):
+		if comment is None:
+			self.emitln('\t' + s)
+		else:
+			self.emitln('\t' + s + '\t\t;' + codeToASMComment(comment))
 	def emitsection(self,s):
 		self.emitln(s)
 
 	def emitlabel(self, s, comment = None):
-		if comment == None:
+		if comment is None:
 			self.emitln(s + ":")
 		else:
-			self.emitln(s + ":			;" + comment)
+			self.emitln(s + ":\t\t\t;" + codeToASMComment(comment))
+
+	def emitcomment(self, comment):
+		if comment is not None:
+			self.emitln('\t\t\t\t;' + codeToASMComment(comment))
 
 	def cleanup(self):
 		self.asm_file.close()
@@ -173,12 +203,6 @@ class Assembler:
 		self.emitcode("mov rdi,0")
 		self.emitcode("syscall")
 
-	def emit_writeINT(self):
-		self.emitlabel("_writeINT")
-		self.emitcode(";int to be written must be in rdi like any other function call")
-		self.emitcode("call prtdec")
-		self.emitcode("ret")
-
 	def emit_writeCRLF(self):
 		self.emitlabel("_writeCRLF")
 		self.emitcode("mov rax, 1")
@@ -189,7 +213,6 @@ class Assembler:
 		self.emitcode("ret")
 
 	def emit_systemfunctions(self):
-		self.emit_writeINT()
 		self.emit_writeCRLF()
 
 
