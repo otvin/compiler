@@ -72,22 +72,10 @@ Execute ```python3 compiler_test.py```
 
 ### Known bugs:
 
-If a first function calls a second function, and the second function takes multiple parameters, and the first function passes into the second function two expressions, each which uses one of the first function's parameters, then the second expression is getting corrupted.  You can see this in test12c.pas in the test suite:
-
-```
-function r(z:integer):integer;
-begin
-    r:=q(z+2,z-2)
-end;
-```
-
-The assembly generated here is clobbering a register.  
- 
-
 Back-to-back comments will not parse.  Example:
 ``` {this comment} {that comment}``` in your code will give you a not-particularly-meaningful Python error ```local variable 'ret' referenced before assignment.```
 
-Previously, when redirecting the output of executables to a file, string literals will pipe to the file, but integers printed to stdout will not.  This occurs even if both stdout and stderr are redirected to the file.  I fixed this by changing the integer print to use an included library nasm64, cited below.  Now, the bug is that if a ```write``` is called on either a string or number, that value will make it to stdout.  However, the next ```write``` or ```writeln``` statement will not, until a ```writeln``` is called.  That will flush something and subsequent strings will make it to the file.  This is truly bizarre.  Thus, the files in the compiler test suite do not exercise ```write```.
+When executing a program, both ```write()``` and ```writeln()``` display properly.  When piping the output to a file, if a ```write``` is called on either a string or number, that value will make it to stdout.  However, the next ```write``` or ```writeln``` statement will not, until a ```writeln``` is called.  That will flush something and subsequent strings will make it to the file.  This is truly bizarre.  Thus, the files in the compiler test suite do not exercise ```write```.  Note I have tested to see if ```write()``` is piping to stderr and that is not the case.  I have no clue.
 
 
 ### References

@@ -148,8 +148,13 @@ class Assembler:
 							self.emitcode("PUSH R8")
 							if num_registers >= 6:
 								self.emitcode("PUSH R9")
+		# always preserve RBP
+		self.emitcode("PUSH RBP")
 
 	def restore_int_registers_after_func_call(self, num_registers):
+		# always restore RBP
+		self.emitcode("POP RBP")
+
 		if num_registers >=6:
 			self.emitcode("POP R9")
 		if num_registers >=5:

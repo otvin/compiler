@@ -185,9 +185,30 @@ class AST():
 			functionsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
 			assembler.emitlabel(functionsymbol.label, "function: " + self.procFuncHeading.name)
 			# allocate space for local variables
+			# Also - if we referenced a parameter in the function as a parameter to another function,
+			# that parameter could get clobbered if we did not copy it to the stack.  Example:
+			# function q(r:integer):integer;
+			#   begin
+			#     q = f(r+2,r-9)
+			#   end;
+			#
+			#   rdi would hold the value of r, but then when we evaluated the "r+2", we would store that value
+			#   in rdi to pass it to f.  So when we went to calculate "r-9", we would go to RDI to grab r,
+			#   but RDI has r+2.  So, we store all the parameters as local variables.  This is likely
+			#   something we could optimize later - only store a parameter as a local variable if it is passed
+			#   into another function.
+
 			localvarbytesneeded = 0
+			self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
+			for i in self.procFuncHeading.parameters:
+				if i.type == TOKEN_VARIABLE_TYPE_INTEGER:
+					localvarbytesneeded += 8
+					self.procFuncHeading.localvariableSymbolTable.insert(i.name, i.type, 'QWORD [RBP-' + str(localvarbytesneeded) + ']')
+
+				else:
+					raise ValueError ("Invalid variable type : " + DEBUG_TOKENDISPLAY[i.type])
+
 			if not (self.procFuncHeading.localvariableAST is None):
-				self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
 				for i in self.procFuncHeading.localvariableAST.children:  # localvariables is an AST with each var as a child
 					if i.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
 						localvarbytesneeded += 8
@@ -198,7 +219,10 @@ class AST():
 				assembler.emitcode("MOV RBP, RSP", "save stack pointer")
 				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local variable storage")
 				assembler.emitcode('AND RSP, QWORD -16' , '16-byte align stack pointer')
-
+				pos = 0
+				for i in self.procFuncHeading.parameters:
+					assembler.emitcode("MOV " + self.procFuncHeading.localvariableSymbolTable.get(i.name).label + ', ' + asm_funcs.parameterPositionToRegister(pos), 'param: ' + i.name)
+					pos += 1
 
 			self.children[0].assemble(assembler, functionsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
 
@@ -372,16 +396,21 @@ class AST():
 			# is this symbol a function parameter or local variable?
 			found_symbol = False
 			if not (procFuncHeadingScope is None):
-				parampos = procFuncHeadingScope.getParameterPos(self.token.value)
-				if not (parampos is None):
-					found_symbol = True
-					# TODO - if we take parameter types other than Integer, we need to do more logic here.
-					assembler.emitcode("MOV RAX, " + asm_funcs.parameterPositionToRegister(parampos))
-				else:
-					if not (procFuncHeadingScope.localvariableSymbolTable is None):
-						if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
-							found_symbol = True
-							assembler.emitcode("MOV RAX, " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label)
+				# Even though functions now copy their parameters to the stack, so there is no reason
+				# to check parampos, at some point we may optimize the code by only copying parameters
+				# to the stack if they are used in function invocations within the current function.
+				# So, I am leaving the parampos check in this block.
+				if not (procFuncHeadingScope.localvariableSymbolTable is None):
+					if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
+						found_symbol = True
+						assembler.emitcode(
+							"MOV RAX, " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label)
+				if found_symbol == False:
+					parampos = procFuncHeadingScope.getParameterPos(self.token.value)
+					if not (parampos is None):
+						found_symbol = True
+						# TODO - if we take parameter types other than Integer, we need to do more logic here.
+						assembler.emitcode("MOV RAX, " + asm_funcs.parameterPositionToRegister(parampos))
 
 			if found_symbol == False:
 				symbol = assembler.variable_symbol_table.get(self.token.value)
