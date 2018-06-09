@@ -148,11 +148,11 @@ class Assembler:
 							self.emitcode("PUSH R8")
 							if num_registers >= 6:
 								self.emitcode("PUSH R9")
+
 		# always preserve RBP
 		self.emitcode("PUSH RBP")
 
 	def restore_int_registers_after_func_call(self, num_registers):
-		# always restore RBP
 		self.emitcode("POP RBP")
 
 		if num_registers >=6:
@@ -183,7 +183,7 @@ class Assembler:
 		if len(self.string_literals.keys()) > 0:
 			self.emitsection("section .data")
 			for key in self.string_literals.keys():
-				self.emitcode(self.string_literals[key] + ' db "' + key + '",0')  # null-terminate everything even if nasm doesn't require
+				self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`,0')  # null-terminate everything even if nasm doesn't require
 				self.emitcode(self.string_literals[key] + 'Len equ $-' + self.string_literals[key])
 
 	def setup_text(self):

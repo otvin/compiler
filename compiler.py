@@ -96,7 +96,7 @@ def isSymbol(char):
 # <function designator> ::= <function identifier> <actual parameter list>
 # <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
-# <string literal> = "'" {<any character other than quote mark>} "'"
+# <string literal> = "'" {<any character>} "'"  # note - apostrophes in string literals have to be escaped by using two apostrophes
 # <variable identifier> ::= <identifier>
 # <identifier> ::= <letter> {<letter> | <digit>}
 # <integer> ::= ["-"] <digit> {<digit>}
@@ -554,8 +554,6 @@ class Tokenizer:
 				ret += "'"
 				self.eat() #eat first apostrophe
 				self.eat() #eat second apostrophe
-			elif self.peek() == '"':
-				self.raiseTokenizeError("Cannot handle quotes inside strings yet")
 			elif self.peek() == "":
 				self.raiseTokenizeError("End of input reached inside quoted string")
 			else:
