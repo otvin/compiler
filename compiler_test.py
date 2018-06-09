@@ -78,11 +78,12 @@ def main():
 	f = dotest("compiler_test_files/test11.pas", "compiler_test_files/test11.out")
 	f = dotest("compiler_test_files/test_recursion.pas", "compiler_test_files/test_recursion.out")
 	f = dotest("compiler_test_files/test11a.pas", "compiler_test_files/test11a.out")
-	f = dotest("compiler_test_files/test13.pas", "compiler_test_files/test13.out")
 	f = dotest("compiler_test_files/test12a.pas", "compiler_test_files/test12a.out")
 	f = dotest("compiler_test_files/test12b.pas", "compiler_test_files/test12b.out")
 	f = dotest("compiler_test_files/test12c.pas", "compiler_test_files/test12c.out")
 	f = dotest("compiler_test_files/test12d.pas", "compiler_test_files/test12d.out")
+	f = dotest("compiler_test_files/test13.pas", "compiler_test_files/test13.out")
+	f = dotest("compiler_test_files/test14.pas", "compiler_test_files/test14.out")
 
 	print ("Tests Attempted: " + str(NUM_ATTEMPTS))
 	print ("Tests Succeeded: " + str(NUM_SUCCESSES))
