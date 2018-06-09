@@ -129,6 +129,7 @@ class ProcFuncHeading:
 		self.parameters = []  # will be a list of ProcFuncParameters
 		self.localvariableAST = None
 		self.localvariableSymbolTable = None
+		self.returnAddress = None  # will be a string with an address offset, typically "QWORD [RBP-8]"
 		self.returntype = None  # will be a token type
 
 	def getParameterPos(self, paramName):
@@ -199,6 +200,12 @@ class AST():
 			#   into another function.
 
 			localvarbytesneeded = 0
+			if self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+				localvarbytesneeded += 8
+				self.procFuncHeading.resultAddress = 'QWORD [RBP-' + str(localvarbytesneeded) + ']'
+			else:
+				raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY[self.procFuncHeading.returntype.type])
+
 			self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
 			for i in self.procFuncHeading.parameters:
 				if i.type == TOKEN_VARIABLE_TYPE_INTEGER:
@@ -229,6 +236,8 @@ class AST():
 			if localvarbytesneeded > 0:
 				assembler.emitcode("MOV RSP, RBP", "restore stack pointer")
 
+			# put the result in RAX
+			assembler.emitcode("MOV RAX, " + self.procFuncHeading.resultAddress)
 			assembler.emitcode("RET")
 		else:
 			for child in self.children:
@@ -386,6 +395,7 @@ class AST():
 					if procFuncHeadingScope is not None:
 						if self.token.value == procFuncHeadingScope.name:
 							self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX to the value we return
+							assembler.emitcode("MOV " + procFuncHeadingScope.resultAddress + ", RAX")
 						else:
 							raise ValueError ("Cannot assign to a function inside another function: " + symbol.procfuncheading.name)
 					else:
