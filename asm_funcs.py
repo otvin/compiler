@@ -183,7 +183,7 @@ class Assembler:
 		if len(self.string_literals.keys()) > 0:
 			self.emitsection("section .data")
 			for key in self.string_literals.keys():
-				self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`,0')  # null-terminate everything even if nasm doesn't require
+				self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`,0')  # null-terminate everything even if nasm doesn't require it
 				self.emitcode(self.string_literals[key] + 'Len equ $-' + self.string_literals[key])
 
 	def setup_text(self):
