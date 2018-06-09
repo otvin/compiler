@@ -43,12 +43,14 @@ TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 33
 TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 34
 TOKEN_VARIABLE_TYPE_INTEGER = 35
 
+TOKEN_NOOP = 36
+
 
 # hack for pretty printing
 DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>'
 					  	'PROGRAM', 'BEGIN', 'END', 'VAR', '{Procedures/Functions}', 'FUNCTION',
 					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE', 'WHILE', 'DO',
-					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer']
+					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer', 'NOOP']
 
 
 # helper functions
@@ -81,8 +83,8 @@ def isSymbol(char):
 # <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 parameters max at this time */
 # <statement part> ::= "begin" <statement sequence> "end"
 # <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
-# <statement sequence> ::= <statement> {";" <statement>}
-# <statement> ::= <simple statement> | <structured statement>
+# <statement sequence> ::= <statement> | <statement> ';' <statement sequence>
+# <statement> ::= <simple statement> | <structured statement> | <empty statement>
 # <simple statement> ::= <assignment statement> | <print statement>   /* Fred note - print statement not in official BNF */
 # <assignment statement> ::= <variable identifier> ":=" <simple expression>
 # <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
@@ -466,6 +468,8 @@ class AST():
 			pass # function declarations are asseembled earlier
 		elif self.token.type == TOKEN_VAR:
 			pass  # variable declarations are assembled earlier
+		elif self.token.type == TOKEN_NOOP:
+			pass  # nothing to do for a noop.
 		elif self.token.type in [TOKEN_BEGIN, TOKEN_PROCFUNC_DECLARATION_PART, TOKEN_PROGRAM] :
 			for child in self.children:
 				child.assemble(assembler, procFuncHeadingScope)
@@ -807,7 +811,7 @@ class Parser:
 		return ret
 
 	def parseStatement(self):
-		# <statement> ::= <simple statement> | <structured statement>
+		# <statement> ::= <simple statement> | <structured statement> | <empty statement>
 		# <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
 		# <assignment statement> ::= <variable identifier> ":=" <simple expression>
 		# <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
@@ -844,7 +848,11 @@ class Parser:
 				ret = AST(tok)
 				ret.children.append(self.parseSimpleExpression())
 			else:
-				self.raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY[tok.type])
+				# self.raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY[tok.type])
+			    # roll the parser back
+				self.tokenizer.curPos = startpos
+				ret = AST(Token(TOKEN_NOOP, None))
+
 			endpos = self.tokenizer.curPos
 			ret.comment = self.tokenizer.text[startpos:endpos]
 
@@ -852,8 +860,13 @@ class Parser:
 
 	def parseCompoundStatement(self):
 		# <compound statement> ::= "begin" <statement sequence> "end"
-		# <statement sequence> ::= <statement> {";" <statement>}
+		# <statement sequence> ::= <statement> | <statement> ';' <statement sequence>
 		ret = AST(self.tokenizer.getNextToken(TOKEN_BEGIN))
+
+		#while not self.tokenizer.peekMatchStringAndSpace("end"):
+		#	ret.children.append(self.parseStatement)
+		#	# if it is a semicolon, great.  If it is
+
 		statement = self.parseStatement()
 		ret.children.append(statement)
 		while self.tokenizer.peek() == ";":

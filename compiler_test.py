@@ -66,6 +66,8 @@ def main():
 	global NUM_SUCCESSES
 
 	f = dotest("compiler_test_files/test1.pas", "compiler_test_files/test1.out")
+	f = dotest("compiler_test_files/test1a.pas", "compiler_test_files/test1a.out")
+	f = dotest("compiler_test_files/test1b.pas", "compiler_test_files/test1b.out")
 	f = dotest("compiler_test_files/test2.pas", "compiler_test_files/test2.out")
 	f = dotest("compiler_test_files/test3.pas", "compiler_test_files/test3.out")
 	f = dotest("compiler_test_files/test4.pas", "compiler_test_files/test4.out")
