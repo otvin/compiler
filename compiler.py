@@ -1,6 +1,5 @@
 import sys
 import asm_funcs
-import copy
 
 # constants for token types
 TOKEN_INT = 0
@@ -85,8 +84,9 @@ def isSymbol(char):
 # <simple statement> ::= <assignment statement> | <print statement>   /* Fred note - print statement not in official BNF */
 # <assignment statement> ::= <variable identifier> ":=" <simple expression>
 # <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
-# <structured statement> ::= <compound statement> | <if statement>  /* Fred note - not handling repetitive or with statements yet */
+# <structured statement> ::= <compound statement> | <while statement> | <if statement>
 # <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
+# <while statement> ::= "while" <expression> "do" <statement>
 # <expression> ::= <simple expression> [<relational operator> <simple expression>]
 # <simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> */
 # <term> ::= <factor> { <multiplication operator> <factor> }
@@ -275,6 +275,7 @@ class AST():
 			assembler.emitcode("MOV RCX, RAX")
 			assembler.emitcode("POP RAX")
 			assembler.emitcode("XOR RDX, RDX")  # RDX is concatenated with RAX to do division
+			assembler.emitcode("CQO") #extend RAX into RDX to handle idiv by negative numbers
 			assembler.emitcode("IDIV RCX")
 		elif self.token.isRelOp():
 			if self.token.type == TOKEN_RELOP_EQUALS:
@@ -438,24 +439,6 @@ class AST():
 					# pop all the registers back
 
 					assembler.preserve_int_registers_for_func_call(len(symbol.procfuncheading.parameters))
-
-					# copy the procFuncHeadingScope - removing the local variable symbol table.  Local variables
-					# do not stay in scope when calling other functions, as we do not do functions declared
-					# inside other functions in this compiler.
-
-					# this won't work.  Imagine this:
-					# function f()...
-					# function g()...
-					# function h()...
-					# function i()
-					#    var foo
-					#    i := f(g(h(foo)))
-
-					#if not (procFuncHeadingScope is None):
-					#	newProcFuncHeadingScope = copy.deepcopy(procFuncHeadingScope)
-					#	newProcFuncHeadingScope.localVariableSymbolTable = None
-					#else:
-					#	newProcFuncHeadingScope = None
 
 					i = 0
 					while i < len(self.children):
