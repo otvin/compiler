@@ -43,7 +43,7 @@ Text in /* */ is a comment
 <function designator> ::= <function identifier> <actual parameter list>
 <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
-<string literal> = "'" {<any character other than apostrophe or quote mark>} "'"
+<string literal> = "'" {<any character other than quote mark>} "'"
 <variable identifier> ::= <identifier>
 <identifier> ::= <letter> {<letter> | <digit>}
 <integer> ::= ["-"] <digit> {<digit>}
