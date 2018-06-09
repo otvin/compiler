@@ -33,8 +33,9 @@ Text in /* */ is a comment
 <simple statement> ::= <assignment statement> | <print statement>   /* Fred note - print statement not in official BNF */
 <assignment statement> ::= <variable identifier> ":=" <simple expression>
 <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
-<structured statement> ::= <compound statement> | <if statement>  /* Fred note - not handling repetitive or with statements yet */
+<structured statement> ::= <compound statement> | <while statement> | <if statement>
 <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
+<while statement> ::= "while" <expression> "do" <statement>
 <expression> ::= <simple expression> [<relational operator> <simple expression>]
 <simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> */
 <term> ::= <factor> { <multiplication operator> <factor> }
@@ -53,7 +54,7 @@ Text in /* */ is a comment
 <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 ```
  
-In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations and an optional set of function declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements, variable assignments, function invocations, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display the result of either a string literal, or a single mathematical expression with all arguments being integers or integer-typed variables.  Addition, subtraction, multiplication, and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
+In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations and an optional set of function declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements, variable assignments, function invocations, ```while/do``` blocks, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` or ```while``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, or after the ```do```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display the result of either a string literal, or a single mathematical expression with all arguments being integers or integer-typed variables.  Addition, subtraction, multiplication, and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
 
 The compiler will ignore comments between open and close curly braces ```{``` and ```}```, anywhere in the code.  So ``` 4 + {random comment} 2``` will evaluate to ```6```.
 

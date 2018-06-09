@@ -34,18 +34,20 @@ TOKEN_WRITE = 25
 TOKEN_IF = 26
 TOKEN_THEN = 27
 TOKEN_ELSE = 28
+TOKEN_WHILE = 29
+TOKEN_DO = 30
 
-TOKEN_STRING = 29
-TOKEN_VARIABLE_IDENTIFIER = 30
-TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 31
-TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 32
-TOKEN_VARIABLE_TYPE_INTEGER = 33
+TOKEN_STRING = 31
+TOKEN_VARIABLE_IDENTIFIER = 32
+TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 33
+TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 34
+TOKEN_VARIABLE_TYPE_INTEGER = 35
 
 
 # hack for pretty printing
 DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>'
 					  	'PROGRAM', 'BEGIN', 'END', 'VAR', '{Procedures/Functions}', 'FUNCTION',
-					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE',
+					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE', 'WHILE', 'DO',
 					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer']
 
 
@@ -330,8 +332,18 @@ class AST():
 				assembler.emitlabel(skipelselabel)
 			else:
 				raise ValueError ("Invalid number of tokens following IF.  Expected 2 or 3, got: " + str(len(self.children)))
-
-
+		elif self.token.type == TOKEN_WHILE:
+			beginwhilelabel = assembler.generate_local_label()
+			endwhilelabel = assembler.generate_local_label()
+			assembler.emitcomment(self.comment + '...')
+			assembler.emitlabel(beginwhilelabel)
+			self.children[0].assemble(assembler, procFuncHeadingScope)
+			assembler.emitcode("CMP RAX, 0")
+			assembler.emitcode("JE " + endwhilelabel)
+			assembler.emitcomment("... DO ...")
+			self.children[1].assemble(assembler, procFuncHeadingScope)
+			assembler.emitcode("JMP " + beginwhilelabel)
+			assembler.emitlabel(endwhilelabel)
 		elif self.token.type == TOKEN_WRITELN or self.token.type == TOKEN_WRITE:
 			assembler.emitcomment(self.comment)
 			for child in self.children:
@@ -591,6 +603,10 @@ class Tokenizer:
 					ret = Token(TOKEN_THEN, None)
 				elif ident == "else":
 					ret = Token(TOKEN_ELSE, None)
+				elif ident == "while":
+					ret = Token(TOKEN_WHILE, None)
+				elif ident == "do":
+					ret = Token(TOKEN_DO, None)
 				elif ident == "program":
 					ret = Token(TOKEN_PROGRAM, None)
 				elif ident == "var":
@@ -771,15 +787,27 @@ class Parser:
 			ret.children.append(elsestatement)
 		return ret
 
+	def parseWhileStatement(self):
+		# <while statement> ::= "while" <expression> "do" <statement>
+		startpos = self.tokenizer.curPos
+		ret = AST(self.tokenizer.getNextToken(TOKEN_WHILE))
+		expression = self.parseExpression()
+		endpos = self.tokenizer.curPos
+		ret.comment = self.tokenizer.text[startpos:endpos]
+		ret.children.append(expression)
+		tok = self.tokenizer.getNextToken(TOKEN_DO)
+		statement = self.parseStatement()
+		ret.children.append(statement)
+		return ret
 
 	def parseStatement(self):
 		# <statement> ::= <simple statement> | <structured statement>
 		# <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
 		# <assignment statement> ::= <variable identifier> ":=" <simple expression>
 		# <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
-		# <structured statement> ::= <compound statement> | <if statement>  # Fred note - not handling repetitive or with statements yet
+		# <structured statement> ::= <compound statement> | <while statement> | <if statement>
 		# <if statement> ::= if <expression> then <statement>
-
+		# <while statement> ::= "while" <expression> "do" <statement>
 
 		# if next token is begin then it is a structured => compound statement
 		if self.tokenizer.peekMatchStringAndSpace("begin"):
@@ -787,6 +815,8 @@ class Parser:
 		# if next token is if then it is a structured => if statement
 		elif self.tokenizer.peekMatchStringAndSpace("if"):
 			ret = self.parseIfStatement()
+		elif self.tokenizer.peekMatchStringAndSpace("while"):
+			ret = self.parseWhileStatement()
 		else:
 			startpos = self.tokenizer.curPos
 			tok = self.tokenizer.getNextToken()
