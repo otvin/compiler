@@ -48,7 +48,7 @@ TOKEN_NOOP = 36
 
 
 # hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>'
+DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', 'DIV', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>'
 					  	'PROGRAM', 'BEGIN', 'END', 'VAR', '{Procedures/Functions}', 'FUNCTION',
 					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE', 'WHILE', 'DO',
 					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer', 'VARIABLE TYPE Real', 'NOOP']
@@ -107,7 +107,7 @@ def isSymbol(char):
 # <letter> ::= "A" .. "Z" || "a" .. "z"
 # <digit> ::= "0" .. "9"
 # <addition operator> ::= "+" | "-"
-# <multiplication operator> ::= "*" | "/"
+# <multiplication operator> ::= "*" | "DIV"
 # <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 
 class Token:
@@ -153,6 +153,7 @@ class AST():
 		self.token = token
 		self.comment = comment # will get put on the line emitted in the assembly code if populated.
 		self.procFuncHeading = None  # only used for procs and funcs
+		self.expressiontype = None # will be a token type
 		self.children = []
 
 	def rpn_print(self):
@@ -635,6 +636,8 @@ class Tokenizer:
 					ret = Token(TOKEN_FUNCTION, None)
 				elif ident == "integer":
 					ret = Token(TOKEN_VARIABLE_TYPE_INTEGER, None)
+				elif ident == "div":
+					ret = Token(TOKEN_IDIV, None)
 				else:  # assume any other identifier is a variable; if inappropriate, it will throw an error later in parsing.
 					ret = Token(TOKEN_VARIABLE_IDENTIFIER, ident)
 			elif self.peek().isdigit():
@@ -657,7 +660,7 @@ class Tokenizer:
 				elif sym == "-":
 					ret = Token(TOKEN_MINUS, None)
 				elif sym == "/":
-					ret = Token(TOKEN_IDIV, None)
+					self.raiseTokenizeError("Cannot handle floating point division yet")
 				elif sym == "*":
 					ret = Token(TOKEN_MULT, None)
 				elif sym == "(":
@@ -752,17 +755,19 @@ class Parser:
 				if factor.type == TOKEN_MINUS:
 					multby = -1
 					factor = self.tokenizer.getNextToken()
-				if factor.type != TOKEN_INT:
-					self.raiseParseError("Integer expected - instead got " + DEBUG_TOKENDISPLAY[factor.type])
 				factor.value = factor.value * multby
 				ret = AST(factor)
+				if isinstance(factor.value, int):
+					ret.expressiontype = asm_funcs.SYMBOL_INTEGER
+				else:
+					ret.expressiontype = asm_funcs.SYMBOL_REAL
 
 		return ret
 
 	def parseTerm(self):
 		# <term> ::= <factor> { <multiplication operator> <factor> }
 		ret = self.parseFactor()
-		while self.tokenizer.peek() in ["*", "/"]:
+		while self.tokenizer.peek() == "*" or self.tokenizer.peekMatchStringAndSpace("div"):
 			multdiv = AST(self.tokenizer.getNextToken())
 			multdiv.children.append(ret)
 			multdiv.children.append(self.parseFactor())

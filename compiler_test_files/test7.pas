@@ -8,7 +8,7 @@ var
 
 begin
     small := -98765;
-    medium := (8 * (2 + 7)) / 4;
+    medium := (8 * (2 + 7)) DIV 4;
     large := 2 * 4 * 6 * 8;
     huge := 100000 + (7 * (4 + 2));
     numSuccess := 0;

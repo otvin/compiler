@@ -2,8 +2,9 @@ import os
 
 SYMBOL_FUNCTION = 0
 SYMBOL_INTEGER = 1
+SYMBOL_REAL = 2
 
-DEBUG_SYMBOLDISPLAY = ["FUNCTION", "INT"]
+DEBUG_SYMBOLDISPLAY = ["FUNCTION", "INT", "REAL"]
 
 def parameterPositionToRegister(pos):
 	# converts the position in the function parameter list to a register
@@ -190,6 +191,7 @@ class Assembler:
 		self.emitsection("section .text")
 		self.emitcode("global _start")
 		self.emitcode("extern prtdec")  # imported from nasm64
+		self.emitcode("extern prtdbl")  # imported from nasm64
 
 	def setup_start(self):
 		self.emitlabel("_start")

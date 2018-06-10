@@ -6,7 +6,7 @@ begin
 end;
 function g(x:integer): integer;
 begin
-    g:=x/2
+    g:=x DIV 2
 end;
 function h(x:integer): integer;
 var a:integer;

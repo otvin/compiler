@@ -50,7 +50,7 @@ Text in /* */ is a comment
 <letter> ::= "A" .. "Z" || "a" .. "z"
 <digit> ::= "0" .. "9"
 <addition operator> ::= "+" | "-"
-<multiplication operator> ::= "*" | "/"
+<multiplication operator> ::= "*" | "DIV"
 <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 ```
  

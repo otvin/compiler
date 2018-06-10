@@ -30,7 +30,7 @@ begin
     writeln('Should be 40');
     writeln(d);
 
-    a := 77 / 11;
+    a := 77 DIV 11;
     b := myfunc(a);
     writeln('Should be 8');
     writeln(b)
