@@ -62,6 +62,8 @@ Recursive functions are supported.  See ```test_recursion.pas``` in the test sui
 
 Under the covers, the program first creates an Abstract Syntax Tree (AST) from the expression, then generates the assembly code from the AST.  Currently, the AST knows how to generate its own assembly code even though that overloads that class a bit, because it's easier to generate it recursively from within a single function if it's a member of that class.
 
+All Integers are 64-bit.  All Reals are 64-bit
+
 ### To run it:
 
 Create a pascal file, then run ```python3 compiler.py {your file name}```.  Example: for the included ```helloworld.pas``` you would call ```python3 compiler.py helloworld.pas```.  You can then execute ```./helloworld``` 
@@ -72,9 +74,6 @@ Execute ```python3 compiler_test.py```
 
 
 ### Known bugs:
-
-Back-to-back comments will not parse.  Example:
-``` {this comment} {that comment}``` in your code will give you a not-particularly-meaningful Python error ```local variable 'ret' referenced before assignment.```
 
 When executing a program, both ```write()``` and ```writeln()``` display properly.  When piping the output to a file, if a ```write``` is called on either a string or number, that value will make it to stdout.  However, the next ```write``` or ```writeln``` statement will not, until a ```writeln``` is called.  That will flush something and subsequent strings will make it to the file.  This is truly bizarre.  Thus, the files in the compiler test suite do not exercise ```write```.  Note I have tested to see if ```write()``` is piping to stderr and that is not the case.  I have no clue.
 

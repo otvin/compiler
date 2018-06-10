@@ -42,6 +42,7 @@ TOKEN_VARIABLE_IDENTIFIER = 32
 TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 33
 TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 34
 TOKEN_VARIABLE_TYPE_INTEGER = 35
+TOKEN_VARIABLE_TYPE_REAL = 36
 
 TOKEN_NOOP = 36
 
@@ -50,7 +51,7 @@ TOKEN_NOOP = 36
 DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', '/', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>'
 					  	'PROGRAM', 'BEGIN', 'END', 'VAR', '{Procedures/Functions}', 'FUNCTION',
 					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE', 'WHILE', 'DO',
-					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer', 'NOOP']
+					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer', 'VARIABLE TYPE Real', 'NOOP']
 
 
 # helper functions
@@ -75,7 +76,7 @@ def isSymbol(char):
 # <declaration part> ::= [<variable declaration part>] [<procedure and function declaration part>]
 # <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
 # <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
-# <type> ::= "integer"                                 /* Fred note - only handling integers at this point */
+# <type> ::= "integer" | "real"
 # <procedure and function declaration part> ::= {<function declaration> ";"}
 # <function declaration> ::= <function heading> ";" <function body>
 # <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
@@ -94,7 +95,7 @@ def isSymbol(char):
 # <expression> ::= <simple expression> [<relational operator> <simple expression>]
 # <simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> */
 # <term> ::= <factor> { <multiplication operator> <factor> }
-# <factor> ::= <integer> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
+# <factor> ::= <integer> | <real> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
 # <function designator> ::= <function identifier> <actual parameter list>
 # <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
@@ -102,6 +103,7 @@ def isSymbol(char):
 # <variable identifier> ::= <identifier>
 # <identifier> ::= <letter> {<letter> | <digit>}
 # <integer> ::= ["-"] <digit> {<digit>}
+# <real> ::= ["-"]<digit>{digit}["."<digit>{digit}]
 # <letter> ::= "A" .. "Z" || "a" .. "z"
 # <digit> ::= "0" .. "9"
 # <addition operator> ::= "+" | "-"
@@ -536,11 +538,19 @@ class Tokenizer:
 
 	def getNumber(self):
 		# <integer> ::= ["-"] <digit> {<digit>}
-		if self.peek().isdigit():  # todo - handle floats
+		# <real> ::= ["-"]<digit>{digit}["."<digit>{digit}]
+		if self.peek().isdigit():
 			retval = self.eat()
 			while self.peek().isdigit():
 				retval += self.eat()
-			return int(retval)
+			if self.peek() == "." and self.peekMulti(2)[1].isdigit():
+				retval += self.eat() # eat the period
+				while self.peek().isdigit():
+					retval += self.eat()
+				return float(retval)
+			else:
+				return int(retval)
+
 		else:
 			self.raiseTokenizeError("Numbers must be numeric")
 
@@ -583,7 +593,7 @@ class Tokenizer:
 			self.raiseTokenizeError("Unexpected end of input. " + errstr)
 		else:
 			# get rid of comments
-			if self.peek() == "{":
+			while self.peek() == "{":
 				while self.peek() != "}":
 					if self.peek() == "\n":
 						self.line_number += 1
@@ -628,7 +638,11 @@ class Tokenizer:
 				else:  # assume any other identifier is a variable; if inappropriate, it will throw an error later in parsing.
 					ret = Token(TOKEN_VARIABLE_IDENTIFIER, ident)
 			elif self.peek().isdigit():
-				ret = Token(TOKEN_INT, self.getNumber())
+				num = self.getNumber()
+				if isinstance(num, int):
+					ret = Token(TOKEN_INT, num)
+				else:
+					ret = Token(TOKEN_REAL, num)
 			elif self.peek() == "'":
 				ret = Token(TOKEN_STRING, self.getStringLiteral())
 			elif isSymbol(self.peek()):
