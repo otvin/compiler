@@ -88,6 +88,7 @@ class Assembler:
 	def __init__(self, asm_filename):
 		self.asm_file = open(asm_filename, 'w')
 		self.string_literals = {}
+		self.real_literals = {}
 		self.next_literal_index = 0
 		self.variable_symbol_table = SymbolTable()
 		self.next_variable_index = 0
@@ -184,7 +185,9 @@ class Assembler:
 		if len(self.string_literals.keys()) > 0:
 			self.emitsection("section .data")
 			for key in self.string_literals.keys():
-				self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`,0')  # null-terminate everything even if nasm doesn't require it
+				#self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`,0')  # null-terminate everything even if nasm doesn't require it
+				#uncomment this to fix the write bug
+				self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`')
 				self.emitcode(self.string_literals[key] + 'Len equ $-' + self.string_literals[key])
 
 	def setup_text(self):

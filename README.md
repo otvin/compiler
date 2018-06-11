@@ -75,8 +75,7 @@ Execute ```python3 compiler_test.py```
 
 ### Known bugs:
 
-When executing a program, both ```write()``` and ```writeln()``` display properly.  When piping the output to a file, if a ```write``` is called on either a string or number, that value will make it to stdout.  However, the next ```write``` or ```writeln``` statement will not, until a ```writeln``` is called.  That will flush something and subsequent strings will make it to the file.  This is truly bizarre.  Thus, the files in the compiler test suite do not exercise ```write```.  Note I have tested to see if ```write()``` is piping to stderr and that is not the case.  I have no clue.
-
+Comments between the ```program``` keyword and a ```function``` keyword when there are no ```var``` declarations, will error.
 
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.

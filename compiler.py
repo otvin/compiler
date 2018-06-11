@@ -176,7 +176,12 @@ class AST():
 				child.find_string_literals(assembler)
 
 	def find_real_literals(self, assembler):
-		pass
+		if self.token.type == TOKEN_REAL:
+			if not (self.token.value in assembler.real_literals):
+				assembler.real_literals[self.token.value] = assembler.generate_literal_name('real')
+		else:
+			for child in self.children:
+				child.find_real_literals(assembler)
 
 	def find_variable_declarations(self, assembler):
 		if self.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
