@@ -47,6 +47,7 @@ Text in /* */ is a comment
 <variable identifier> ::= <identifier>
 <identifier> ::= <letter> {<letter> | <digit>}
 <integer> ::= ["-"] <digit> {<digit>}
+<real> ::= ["-"]<digit>{digit}["."<digit>{digit}]
 <letter> ::= "A" .. "Z" || "a" .. "z"
 <digit> ::= "0" .. "9"
 <addition operator> ::= "+" | "-"

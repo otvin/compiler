@@ -532,6 +532,9 @@ class AST():
 				if symbol.type == asm_funcs.SYMBOL_INTEGER:
 					self.children[0].assemble(assembler, procFuncHeadingScope) # RAX has the value
 					assembler.emitcode("MOV [" + symbol.label + "], RAX")
+				elif symbol.type == asm_funcs.SYMBOL_REAL:
+					self.children[0].assemble(assembler, procFuncHeadingScope) # XMM0 has the value
+					assembler.emitcode("MOVSD [" + symbol.label + "], XMM0")
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					if procFuncHeadingScope is not None:
 						if self.token.value == procFuncHeadingScope.name:
@@ -567,6 +570,8 @@ class AST():
 				symbol = assembler.variable_symbol_table.get(self.token.value)
 				if symbol.type == asm_funcs.SYMBOL_INTEGER:
 					assembler.emitcode("MOV RAX, [" + symbol.label + "]")
+				elif symbol.type == asm_funcs.SYMBOL_REAL:
+					assembler.emitcode("MOVSD XMM0, [" + symbol.label + "]")
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					# call the function - return value is in RAX
 					# current limitation - 6 parameters max - to fix this, we just need to use relative
@@ -1052,8 +1057,8 @@ class Parser:
 				ident_token = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
 				colon_token = self.tokenizer.getNextToken(TOKEN_COLON)
 				type_token = self.tokenizer.getNextToken()
-				if type_token.type != TOKEN_VARIABLE_TYPE_INTEGER:
-					raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY[type_token.type])
+				if type_token.type not in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
+					self.raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY[type_token.type])
 				semi_token = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
 				type_token.value = ident_token.value

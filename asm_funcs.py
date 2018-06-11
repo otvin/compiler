@@ -186,8 +186,9 @@ class Assembler:
 
 		for key in self.variable_symbol_table.symbollist():
 			symbol = self.variable_symbol_table.get(key)
-			if symbol.type == SYMBOL_INTEGER:
-				self.emitcode(symbol.label + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int
+			if symbol.type in [SYMBOL_INTEGER, SYMBOL_REAL]:
+				self.emitcode(symbol.label + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int or float
+
 
 
 	def setup_data(self):
