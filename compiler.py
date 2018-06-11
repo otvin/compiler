@@ -355,6 +355,8 @@ class AST():
 	def assemble(self, assembler, procFuncHeadingScope):
 		if self.token.type == TOKEN_INT:
 			assembler.emitcode("MOV RAX, " + str(self.token.value))
+		elif self.token.type == TOKEN_REAL:
+			assembler.emitcode("MOVSD XMM0, [" + assembler.real_literals[self.token.value] + "]")
 		elif self.token.type == TOKEN_PLUS:
 			self.children[0].assemble(assembler, procFuncHeadingScope)
 			# RAX now contains value of the first child
@@ -472,12 +474,17 @@ class AST():
 						assembler.emitcode("pop rsi")
 						assembler.emitcode("pop rdi")
 						assembler.emitcode("pop rax")
-				else:
+				elif child.expressiontype == TOKEN_INT:
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in RAX
 					assembler.emitcode("push rdi")
 					assembler.emitcode("mov rdi, rax") # first parameter of functions should be in RDI
 					assembler.emitcode("call prtdec","imported from nsm64")
 					assembler.emitcode("pop rdi")
+				elif child.expressiontype == TOKEN_REAL:
+					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in XMM0
+					assembler.emitcode("call prtdbl")
+				else:
+					raise ValueError ("Do not know how to write this type.")
 			if self.token.type == TOKEN_WRITELN:
 				assembler.emitcode("push rax")
 				assembler.emitcode("push rdi")
