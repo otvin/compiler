@@ -309,7 +309,7 @@ class AST():
 			#   into another function.
 
 			localvarbytesneeded = 0
-			if self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+			if self.procFuncHeading.returntype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 				localvarbytesneeded += 8
 				self.procFuncHeading.resultAddress = 'QWORD [RBP-' + str(localvarbytesneeded) + ']'
 			else:
@@ -345,8 +345,11 @@ class AST():
 			if localvarbytesneeded > 0:
 				assembler.emitcode("MOV RSP, RBP", "restore stack pointer")
 
-			# put the result in RAX
-			assembler.emitcode("MOV RAX, " + self.procFuncHeading.resultAddress)
+			# put the result in correct register
+			if self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+				assembler.emitcode("MOV RAX, " + self.procFuncHeading.resultAddress)
+			else:
+				assembler.emitcode("MOVSD XMM0, " + self.procFuncHeading.resultAddress)
 			assembler.emitcode("RET")
 		else:
 			for child in self.children:
@@ -538,8 +541,11 @@ class AST():
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					if procFuncHeadingScope is not None:
 						if self.token.value == procFuncHeadingScope.name:
-							self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX to the value we return
-							assembler.emitcode("MOV " + procFuncHeadingScope.resultAddress + ", RAX")
+							self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX or XMM0 to the value we return
+							if procFuncHeadingScope.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+								assembler.emitcode("MOV " + procFuncHeadingScope.resultAddress + ", RAX")
+							else:
+								assembler.emitcode("MOVSD " + procFuncHeadingScope.resultAddress + ", XMM0")
 						else:
 							raise ValueError ("Cannot assign to a function inside another function: " + symbol.procfuncheading.name)
 					else:
@@ -1097,10 +1103,10 @@ class Parser:
 
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		functype = self.tokenizer.getNextToken()
-		if functype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+		if functype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 			funcheading.returntype = functype
 		else:
-			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype.type))
+			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY[functype.type])
 		semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
 		if self.tokenizer.peekMatchStringAndSpace("var"):
