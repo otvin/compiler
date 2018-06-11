@@ -3,52 +3,53 @@ import asm_funcs
 
 # constants for token types
 TOKEN_INT = 0
-TOKEN_PLUS = 1
-TOKEN_MINUS = 2
-TOKEN_MULT = 3
-TOKEN_IDIV = 4
-TOKEN_LPAREN = 5
-TOKEN_RPAREN = 6
-TOKEN_SEMICOLON = 7
-TOKEN_PERIOD = 8
-TOKEN_COLON = 9
-TOKEN_COMMA = 10
-TOKEN_ASSIGNMENT_OPERATOR = 11
-TOKEN_RELOP_EQUALS = 12
-TOKEN_RELOP_GREATER = 13
-TOKEN_RELOP_LESS = 14
-TOKEN_RELOP_GREATEREQ = 15
-TOKEN_RELOP_LESSEQ = 16
-TOKEN_RELOP_NOTEQ = 17
+TOKEN_REAL = 1
+TOKEN_PLUS = 2
+TOKEN_MINUS = 3
+TOKEN_MULT = 4
+TOKEN_IDIV = 5
+TOKEN_LPAREN = 6
+TOKEN_RPAREN = 7
+TOKEN_SEMICOLON = 8
+TOKEN_PERIOD = 9
+TOKEN_COLON = 10
+TOKEN_COMMA = 11
+TOKEN_ASSIGNMENT_OPERATOR = 12
+TOKEN_RELOP_EQUALS = 13
+TOKEN_RELOP_GREATER = 14
+TOKEN_RELOP_LESS = 15
+TOKEN_RELOP_GREATEREQ = 16
+TOKEN_RELOP_LESSEQ = 17
+TOKEN_RELOP_NOTEQ = 18
 
-TOKEN_PROGRAM = 18
-TOKEN_BEGIN = 19
-TOKEN_END = 20
-TOKEN_VAR = 21
-TOKEN_PROCFUNC_DECLARATION_PART = 22  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
-TOKEN_FUNCTION = 23
+TOKEN_PROGRAM = 19
+TOKEN_BEGIN = 20
+TOKEN_END = 21
+TOKEN_VAR = 22
+TOKEN_PROCFUNC_DECLARATION_PART = 23  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
+TOKEN_FUNCTION = 24
 
 
-TOKEN_WRITELN = 24
-TOKEN_WRITE = 25
-TOKEN_IF = 26
-TOKEN_THEN = 27
-TOKEN_ELSE = 28
-TOKEN_WHILE = 29
-TOKEN_DO = 30
+TOKEN_WRITELN = 25
+TOKEN_WRITE = 26
+TOKEN_IF = 27
+TOKEN_THEN = 28
+TOKEN_ELSE = 29
+TOKEN_WHILE = 30
+TOKEN_DO = 31
 
-TOKEN_STRING = 31
-TOKEN_VARIABLE_IDENTIFIER = 32
-TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 33
-TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 34
-TOKEN_VARIABLE_TYPE_INTEGER = 35
-TOKEN_VARIABLE_TYPE_REAL = 36
+TOKEN_STRING = 32
+TOKEN_VARIABLE_IDENTIFIER = 33
+TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 34
+TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 35
+TOKEN_VARIABLE_TYPE_INTEGER = 36
+TOKEN_VARIABLE_TYPE_REAL = 37
 
-TOKEN_NOOP = 36
+TOKEN_NOOP = 38
 
 
 # hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT', '+', '-', '*', 'DIV', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>'
+DEBUG_TOKENDISPLAY = ['INT', 'REAL', '+', '-', '*', 'DIV', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>',
 					  	'PROGRAM', 'BEGIN', 'END', 'VAR', '{Procedures/Functions}', 'FUNCTION',
 					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE', 'WHILE', 'DO',
 					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer', 'VARIABLE TYPE Real', 'NOOP']
@@ -159,7 +160,12 @@ class AST():
 	def rpn_print(self):
 		for x in self.children:
 			x.rpn_print()
-		print(self.token.debugprint())
+		typestr = ""
+		if self.expressiontype == TOKEN_INT:
+			typestr = "Type: Integer |"
+		elif self.expressiontype == TOKEN_REAL:
+			typestr = "Type: Real |"
+		print(typestr + self.token.debugprint())
 
 	def find_string_literals(self, assembler):
 		if self.token.type == TOKEN_STRING:
@@ -169,22 +175,113 @@ class AST():
 			for child in self.children:
 				child.find_string_literals(assembler)
 
+	def find_real_literals(self, assembler):
+		pass
+
 	def find_variable_declarations(self, assembler):
 		if self.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
 			if self.token.value in assembler.variable_symbol_table.symbollist():
 				raise ValueError ("Variable redefined: " + self.token.value)
 			else:
 				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_INTEGER, assembler.generate_variable_name('int'))
+		elif self.token.type == TOKEN_VARIABLE_TYPE_REAL:
+			if self.token.value in assembler.variable_symbol_table.symbollist():
+				raise ValueError ("Variable redefined: " + self.token.value)
+			else:
+				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_REAL, assembler.generate_variable_name('real'))
 		elif self.token.type == TOKEN_FUNCTION:
 			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist():
 				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
 			else:
 				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_FUNCTION, assembler.generate_variable_name("func"), self.procFuncHeading)
-			# eventually - functions will have variable declarations themselves, will need to handle that here.
-			# but those will be local - the procFuncHeading object will need its own symbol table.
 		else:
 			for child in self.children:
 				child.find_variable_declarations(assembler)
+
+	def process_numeric_types(self, assembler, parentProcFuncHeading = None):
+		for child in self.children:
+			if not self.procFuncHeading is None:
+				child.process_numeric_types(assembler, self.procFuncHeading)
+			else:
+				child.process_numeric_types(assembler, parentProcFuncHeading)
+
+		if self.token.type == TOKEN_INT:
+			self.expressiontype = TOKEN_INT
+		elif self.token.type == TOKEN_REAL:
+			self.expressiontype = TOKEN_REAL
+		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT]:
+			# validation check
+			if self.children[0].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
+				raise ValueError ("Invalid type for first operand")
+			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
+				raise ValueError ("Invalid type for second operand")
+			if self.children[0].expressiontype == TOKEN_INT and self.children[1].expressiontype == TOKEN_INT:
+				self.expressiontype = TOKEN_INT
+			else:
+				self.expressiontype = TOKEN_REAL
+		elif self.token.type == TOKEN_IDIV:
+			if self.children[0].expressiontype != TOKEN_INT:
+				raise ValueError ("First operand of DIV must be an Integer.")
+			if self.children[1].expressiontype != TOKEN_INT:
+				raise ValueError ("Second operand of DIV must be an Integer.")
+			self.expressiontype = TOKEN_INT
+		elif self.token.type in [TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT, TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION]:
+			foundit = False
+			if not parentProcFuncHeading is None:
+				for param in parentProcFuncHeading.parameters:
+					if param.name == self.token.value:
+						if param.type == TOKEN_VARIABLE_TYPE_INTEGER:
+							self.expressiontype = TOKEN_INT
+							foundit = True
+						elif param.type == TOKEN_VARIABLE_TYPE_REAL:
+							self.expressiontype = TOKEN_REAL
+							foundit = True
+
+			if foundit == False:
+				if not parentProcFuncHeading is None:
+					# Note - parentProcFuncHeading.localvariableSymbolTable is not yet built when this code is running.
+					# So, we need to look at parentProcFuncHeading.localvariableAST to get the information we need.
+					if not parentProcFuncHeading.localvariableAST is None:
+						for localvar in parentProcFuncHeading.localvariableAST.children:
+							if localvar.token.value == self.token.value:
+								foundit = True
+								if localvar.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
+									self.expressiontype = TOKEN_INT
+								elif localvar.token.type == TOKEN_VARIABLE_TYPE_REAL:
+									self.expreeiontype = TOKEN_REAL
+								break
+
+			if foundit == False:
+				myvar = None
+				if not parentProcFuncHeading is None:
+					if not parentProcFuncHeading.localvariableSymbolTable is None:
+						if parentProcFuncHeading.localvariableSymbolTable.exists(self.token.value):
+							myvar = parentProcFuncHeading.localvariableSymbolTable.get(self.token.value)
+
+				if myvar is None:
+					myvar = assembler.variable_symbol_table.get(self.token.value)
+				if myvar.type == asm_funcs.SYMBOL_INTEGER:
+					self.expressiontype = TOKEN_INT
+				elif myvar.type == asm_funcs.SYMBOL_REAL:
+					self.expressiontype = TOKEN_REAL
+				elif myvar.type == asm_funcs.SYMBOL_FUNCTION:
+					if myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+						self.expressiontype = TOKEN_INT
+					elif myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_REAL:
+						self.expressiontype = TOKEN_REAL
+					else:
+						raise ValueError ("I need to know how I got here to know what I have to get the type correct")
+		elif self.token.isRelOp():
+			if self.children[0].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
+				raise ValueError ("Invalid type left of relational op")
+			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
+				raise ValueError ("Invalid type right of relational op")
+			if self.children[0].expressiontype != self.children[1].expressiontype:
+				errstr = "Left of " + DEBUG_TOKENDISPLAY[self.token.type] + " type "
+				errstr += DEBUG_TOKENDISPLAY[self.children[0].expressiontype]
+				errstr += ", right has type " + DEBUG_TOKENDISPLAY[self.children[1].expressiontype]
+				raise ValueError (errstr)
+			self.expressiontype = self.children[0].expressiontype
 
 	def assembleProcsAndFunctions(self, assembler):
 		if self.token.type == TOKEN_FUNCTION:
@@ -636,6 +733,8 @@ class Tokenizer:
 					ret = Token(TOKEN_FUNCTION, None)
 				elif ident == "integer":
 					ret = Token(TOKEN_VARIABLE_TYPE_INTEGER, None)
+				elif ident == "real":
+					ret = Token(TOKEN_VARIABLE_TYPE_REAL, None)
 				elif ident == "div":
 					ret = Token(TOKEN_IDIV, None)
 				else:  # assume any other identifier is a variable; if inappropriate, it will throw an error later in parsing.
@@ -758,9 +857,9 @@ class Parser:
 				factor.value = factor.value * multby
 				ret = AST(factor)
 				if isinstance(factor.value, int):
-					ret.expressiontype = asm_funcs.SYMBOL_INTEGER
+					ret.expressiontype = TOKEN_INT
 				else:
-					ret.expressiontype = asm_funcs.SYMBOL_REAL
+					ret.expressiontype = TOKEN_REAL
 
 		return ret
 
@@ -770,8 +869,11 @@ class Parser:
 		while self.tokenizer.peek() == "*" or self.tokenizer.peekMatchStringAndSpace("div"):
 			multdiv = AST(self.tokenizer.getNextToken())
 			multdiv.children.append(ret)
-			multdiv.children.append(self.parseFactor())
+			nextchild = self.parseFactor()
+			multdiv.children.append(nextchild)
 			ret = multdiv
+
+
 		return ret
 
 	def parseSimpleExpression(self):
@@ -780,7 +882,8 @@ class Parser:
 		while self.tokenizer.peek() in ['+', '-']:
 			addsub = AST(self.tokenizer.getNextToken())
 			addsub.children.append(ret)
-			addsub.children.append(self.parseTerm())
+			nextchild = self.parseTerm()
+			addsub.children.append(nextchild)
 			ret = addsub
 		return ret
 
@@ -792,8 +895,9 @@ class Parser:
 			if not tok.isRelOp():
 				raiseParseError("Relational Operator Expected, got: " + DEBUG_TOKENDISPLAY[tok.type])
 			ret = AST(tok)
+			next_simple_expression = self.parseSimpleExpression()
 			ret.children.append(first_simple_expression)
-			ret.children.append(self.parseSimpleExpression())
+			ret.children.append(next_simple_expression)
 		else:
 			ret = AST(first_simple_expression)
 
@@ -1029,7 +1133,10 @@ class Parser:
 	def assemble(self, filename):
 		self.assembler = asm_funcs.Assembler(filename)
 		self.AST.find_string_literals(self.assembler)
+		self.AST.find_real_literals(self.assembler)
 		self.AST.find_variable_declarations(self.assembler)
+		self.AST.process_numeric_types(self.assembler)
+
 
 		self.assembler.setup_bss()
 		self.assembler.setup_data()
@@ -1071,6 +1178,8 @@ def main():
 
 	print("Parsing...")
 	p.parse()
+
+
 	print("Done.\nAssembling...")
 	p.assemble(assemblyfilename)
 	print("Done.\nCompiling...")
