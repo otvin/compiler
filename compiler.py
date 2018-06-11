@@ -357,28 +357,42 @@ class AST():
 			assembler.emitcode("MOV RAX, " + str(self.token.value))
 		elif self.token.type == TOKEN_REAL:
 			assembler.emitcode("MOVSD XMM0, [" + assembler.real_literals[self.token.value] + "]")
-		elif self.token.type == TOKEN_PLUS:
-			self.children[0].assemble(assembler, procFuncHeadingScope)
-			# RAX now contains value of the first child
-			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler, procFuncHeadingScope)
-			# RAX now contains value of the second child
-			assembler.emitcode("POP RCX")
-			# RCX now contains value of the first child
-			assembler.emitcode("ADD RAX, RCX")
-		elif self.token.type == TOKEN_MINUS:
-			self.children[0].assemble(assembler, procFuncHeadingScope)
-			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler, procFuncHeadingScope)
-			assembler.emitcode("POP RCX")
-			assembler.emitcode("SUB RCX, RAX")
-			assembler.emitcode("MOV RAX, RCX")  # it might be quicker to sub RAX, RCX and NEG RAX.
-		elif self.token.type == TOKEN_MULT:
-			self.children[0].assemble(assembler, procFuncHeadingScope)
-			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler, procFuncHeadingScope)
-			assembler.emitcode("POP RCX")
-			assembler.emitcode("IMUL RAX, RCX")
+		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT]:
+			if self.expressiontype == TOKEN_INT:
+				# all children must be ints
+				self.children[0].assemble(assembler, procFuncHeadingScope)
+				# RAX now contains value of the first child
+				assembler.emitcode("PUSH RAX")
+				self.children[1].assemble(assembler, procFuncHeadingScope)
+				# RAX now contains value of the second child
+				assembler.emitcode("POP RCX")
+				# RCX now contains value of the first child
+				if self.token.type == TOKEN_PLUS:
+					assembler.emitcode("ADD RAX, RCX")
+				elif self.token.type == TOKEN_MINUS:
+					assembler.emitcode("SUB RCX, RAX")
+					assembler.emitcode("MOV RAX, RCX")  # it might be quicker to sub RAX, RCX and NEG RAX
+				else:
+					assembler.emitcode("IMUL RAX, RCX")
+			else:
+				# integer children will be in RAX and have to be moved to XMM0
+				# real children will already be in XMM0
+				self.children[0].assemble(assembler, procFuncHeadingScope)
+				if self.children[0].expressiontype == TOKEN_INT:
+					assembler.emitcode("CVTSI2SD XMM0, RAX")
+				assembler.emitpushxmmreg("XMM0")
+				self.children[1].assemble(assembler, procFuncHeadingScope)
+				if self.children[1].expressiontype == TOKEN_INT:
+					assembler.emitcode("CVTSI2SD XMM0, RAX")
+				assembler.emitpopxmmreg("XMM8")
+				if self.token.type == TOKEN_PLUS:
+					assembler.emitcode("ADDSD XMM0, XMM8")
+				elif self.token.type == TOKEN_MINUS:
+					assembler.emitcode("SUBSD XMM8, XMM0")
+					assembler.emitcode("MOVSD XMM0, XMM8")
+				else:
+					assembler.emitcode("MULSD XMM0, XMM8")
+
 		elif self.token.type == TOKEN_IDIV:
 			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("PUSH RAX")

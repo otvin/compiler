@@ -105,6 +105,15 @@ class Assembler:
 			self.emitln('\t' + s)
 		else:
 			self.emitln('\t' + s + '\t\t;' + codeToASMComment(comment))
+
+	def emitpushxmmreg(self, reg):
+		self.emitcode("SUB RSP, 16")
+		self.emitcode("MOVDQU [RSP], " + reg)
+
+	def emitpopxmmreg(self, reg):
+		self.emitcode("MOVDQU " + reg + ", [RSP]")
+		self.emitcode("ADD RSP, 16")
+
 	def emitsection(self,s):
 		self.emitln(s)
 
