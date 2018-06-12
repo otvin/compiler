@@ -78,6 +78,8 @@ Execute ```python3 compiler_test.py```
 
 Comments between the ```program``` keyword and a ```function``` keyword when there are no ```var``` declarations, will error.
 
+If a function takes a Real parameter, and an expression of type Integer is passed in, the Integer will not be converted to Real.  Workaround: multiply by 1.0 to convert to Real.
+
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.
 

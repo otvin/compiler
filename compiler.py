@@ -128,7 +128,7 @@ class Token:
 class ProcFuncParameter:
 	def __init__(self, name, type):
 		self.name = name
-		self.type = type
+		self.type = type  # will be a token variable type e.g. TOKEN_VARIABLE_TYPE_INTEGER
 
 class ProcFuncHeading:
 	def __init__(self, name):
@@ -137,7 +137,7 @@ class ProcFuncHeading:
 		self.localvariableAST = None
 		self.localvariableSymbolTable = None
 		self.returnAddress = None  # will be a string with an address offset, typically "QWORD [RBP-8]"
-		self.returntype = None  # will be a token type
+		self.returntype = None  # will be a token variable type e.g. TOKEN_VARIABLE_TYPE_INTEGER
 
 	def getParameterPos(self, paramName):
 		ret = None
@@ -149,12 +149,43 @@ class ProcFuncHeading:
 			i += 1
 		return ret
 
+
+	def getRegisterForParameterName(self, paramName):
+		ret = None
+		intargs = 0
+		realargs = 0
+		i = 0
+		while i < len(self.parameters):
+			if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER:
+				intargs += 1
+			elif self.parameters[i].type == TOKEN_VARIABLE_TYPE_REAL:
+				realargs += 1
+			else:
+				raise ValueError("Invalid parameter type: " + DEBUG_TOKENDISPLAY[self.parameters[i].type])
+
+			if self.parameters[i].name == paramName:
+				if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER:
+					ret = asm_funcs.intParameterPositionToRegister(intargs)
+				else:
+					ret = asm_funcs.realParameterPositionToRegister(realargs)
+			i += 1
+		return ret
+
+	def getParameterCountByType(self, type):
+		ret = 0
+		i = 0
+		while i < len(self.parameters):
+			if self.parameters[i].type == type:
+				ret += 1
+			i += 1
+		return ret
+
 class AST():
 	def __init__(self, token, comment = None):
 		self.token = token
 		self.comment = comment # will get put on the line emitted in the assembly code if populated.
 		self.procFuncHeading = None  # only used for procs and funcs
-		self.expressiontype = None # will be a token type
+		self.expressiontype = None # will be a token type: TOKEN_INT or TOKEN_REAL
 		self.children = []
 
 	def rpn_print(self):
@@ -291,7 +322,9 @@ class AST():
 	def assembleProcsAndFunctions(self, assembler):
 		if self.token.type == TOKEN_FUNCTION:
 			# first six integer arguments are passed in RDI, RSI, RDX, RCX, R8, and R9 in that order
+			# first eight real arguments are passed in XMMO..XMM7
 			# integer return values are passed in RAX
+			# real return values are passed in XMM0
 			functionsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
 			assembler.emitlabel(functionsymbol.label, "function: " + self.procFuncHeading.name)
 			# allocate space for local variables
@@ -317,39 +350,51 @@ class AST():
 
 			self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
 			for i in self.procFuncHeading.parameters:
-				if i.type == TOKEN_VARIABLE_TYPE_INTEGER:
+				if i.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 					localvarbytesneeded += 8
-					self.procFuncHeading.localvariableSymbolTable.insert(i.name, i.type, 'QWORD [RBP-' + str(localvarbytesneeded) + ']')
+					if i.type == TOKEN_VARIABLE_TYPE_INTEGER:
+						symboltype = asm_funcs.SYMBOL_INTEGER
+					else:
+						symboltype = asm_funcs.SYMBOL_REAL
+					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, 'QWORD [RBP-' + str(localvarbytesneeded) + ']')
 
 				else:
 					raise ValueError ("Invalid variable type : " + DEBUG_TOKENDISPLAY[i.type])
 
 			if not (self.procFuncHeading.localvariableAST is None):
 				for i in self.procFuncHeading.localvariableAST.children:  # localvariables is an AST with each var as a child
-					if i.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
+					if i.token.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 						localvarbytesneeded += 8
-						self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, i.token.type, '[RBP - ' + str(localvarbytesneeded) + ']')
+						if i.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
+							symboltype = asm_funcs.SYMBOL_INTEGER
+						else:
+							symboltype = asm_funcs.SYMBOL_REAL
+						self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, '[RBP - ' + str(localvarbytesneeded) + ']')
 					else:
 						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY[i.type])
 			if localvarbytesneeded > 0:
 				assembler.emitcode("MOV RBP, RSP", "save stack pointer")
 				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local variable storage")
 				assembler.emitcode('AND RSP, QWORD -16' , '16-byte align stack pointer')
-				pos = 0
 				for i in self.procFuncHeading.parameters:
-					assembler.emitcode("MOV " + self.procFuncHeading.localvariableSymbolTable.get(i.name).label + ', ' + asm_funcs.parameterPositionToRegister(pos), 'param: ' + i.name)
-					pos += 1
+					paramlabel = self.procFuncHeading.localvariableSymbolTable.get(i.name).label
+					register = self.procFuncHeading.getRegisterForParameterName(i.name)
+					if i.type == TOKEN_VARIABLE_TYPE_INTEGER:
+						assembler.emitcode("MOV " + paramlabel + ', ' + register, 'param: ' + i.name)
+					else:
+						assembler.emitcode("MOVSD " + paramlabel + ', ' + register, 'param: ' + i.name)
 
 			self.children[0].assemble(assembler, functionsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
-
-			if localvarbytesneeded > 0:
-				assembler.emitcode("MOV RSP, RBP", "restore stack pointer")
 
 			# put the result in correct register
 			if self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
 				assembler.emitcode("MOV RAX, " + self.procFuncHeading.resultAddress)
 			else:
 				assembler.emitcode("MOVSD XMM0, " + self.procFuncHeading.resultAddress)
+
+			if localvarbytesneeded > 0:
+				assembler.emitcode("MOV RSP, RBP", "restore stack pointer")
+
 			assembler.emitcode("RET")
 		else:
 			for child in self.children:
@@ -516,20 +561,28 @@ class AST():
 			assembler.emitcomment(self.comment)
 			found_symbol = False
 			if not (procFuncHeadingScope is None):
-				parampos = procFuncHeadingScope.getParameterPos(self.token.value)
-				if not (parampos is None):
-					# TODO - if we have parameter types other than Integer, we need to do more logic here
+				reg = procFuncHeadingScope.getRegisterForParameterName(self.token.value)
+				if not (reg is None):
 					found_symbol = True
 					self.children[0].assemble(assembler, procFuncHeadingScope)
-					assembler.emitcode("MOV " + asm_funcs.parameterPositionToRegister(parampos) + ", RAX")
+					if self.children[0].expressiontype == TOKEN_INT:
+						assembler.emitcode("MOV " + reg + ", RAX")
+					elif self.children[0].expressiontype == TOKEN_REAL:
+						assembler.emitcode("MOVSD " + reg + ", XMM0")
+					else:
+						raise ValueError("Invalid expressiontype")
 				else:
 					# If this is a local variable in a function/proc we refer to it via the offset from RBP
 					if not (procFuncHeadingScope.localvariableSymbolTable is None):
 						if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
 							found_symbol = True
 							self.children[0].assemble(assembler, procFuncHeadingScope)
-							assembler.emitcode("MOV " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", RAX")
-
+							if self.children[0].expressiontype == TOKEN_INT:
+								assembler.emitcode("MOV " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", RAX")
+							elif self.children[0].expressiontype == TOKEN_REAL:
+								assembler.emitcode("MOVSD " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", XMM0")
+							else:
+								raise ValueError("Invalid expressiontype")
 			if found_symbol == False:
 				symbol = assembler.variable_symbol_table.get(self.token.value)
 				if symbol.type == asm_funcs.SYMBOL_INTEGER:
@@ -557,20 +610,33 @@ class AST():
 			found_symbol = False
 			if not (procFuncHeadingScope is None):
 				# Even though functions now copy their parameters to the stack, so there is no reason
-				# to check parampos, at some point we may optimize the code by only copying parameters
+				# to check the parameter list, at some point we may optimize the code by only copying parameters
 				# to the stack if they are used in function invocations within the current function.
-				# So, I am leaving the parampos check in this block.
+				# So, I am leaving the parameter list check in this block.
 				if not (procFuncHeadingScope.localvariableSymbolTable is None):
 					if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
 						found_symbol = True
-						assembler.emitcode(
-							"MOV RAX, " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label)
+						symbol = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value)
+						# ugly - the sumboltype.get
+						if symbol.type == asm_funcs.SYMBOL_INTEGER:
+							assembler.emitcode("MOV RAX, " + symbol.label)
+						elif symbol.type == asm_funcs.SYMBOL_REAL:
+							assembler.emitcode("MOVSD XMM0, " + symbol.label)
+						else:
+							raise ValueError ("Invalid Symbol Type")
 				if found_symbol == False:
-					parampos = procFuncHeadingScope.getParameterPos(self.token.value)
-					if not (parampos is None):
+					reg = procFuncHeadingScope.getRegisterForParameterName(self.token.value)
+					if not (reg is None):
 						found_symbol = True
-						# TODO - if we take parameter types other than Integer, we need to do more logic here.
-						assembler.emitcode("MOV RAX, " + asm_funcs.parameterPositionToRegister(parampos))
+						# This is ugly, I could cheat and check the register name and infer type,
+						# Or I could have the getRegisterForParameterName() also return a type.
+						paramtype = procFuncHeadingScope.parameters[procFuncHeadingScope.getParameterPos[self.token.value]].type
+						if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
+							assembler.emitcode("MOV RAX, " + reg)
+						elif paramtype == TOKEN_VARIABLE_TYPE_REAL:
+							assembler.emitcode("MOVSD XMM0, " + reg)
+						else:
+							raise ValueError("Invalid Parameter Type")
 
 			if found_symbol == False:
 				symbol = assembler.variable_symbol_table.get(self.token.value)
@@ -589,15 +655,27 @@ class AST():
 					# rax has the return
 					# pop all the registers back
 
-					assembler.preserve_int_registers_for_func_call(len(symbol.procfuncheading.parameters))
+					assembler.preserve_xmm_registers_for_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
+					assembler.preserve_int_registers_for_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
 
 					i = 0
+					intparams = 0
+					realparams = 0
 					while i < len(self.children):
 						self.children[i].assemble(assembler, procFuncHeadingScope)
-						assembler.emitcode("MOV " + asm_funcs.parameterPositionToRegister(i) + ", RAX")
+						if self.children[i].expressiontype == TOKEN_INT:
+							intparams += 1
+							assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
+						elif self.children[i].expressiontype == TOKEN_REAL:
+							realparams += 1
+							assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
+						else:
+							raise ValueError("Invalid expressiontype")
 						i += 1
+
 					assembler.emitcode("CALL " + symbol.label, "invoke function " + symbol.procfuncheading.name + '()')
-					assembler.restore_int_registers_after_func_call(len(symbol.procfuncheading.parameters))
+					assembler.restore_xmm_registers_after_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
+					assembler.restore_int_registers_after_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
 
 				else:
 					raise ValueError ("Invalid variable type :" + vartuple[0])
@@ -1078,8 +1156,8 @@ class Parser:
 		paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER).value
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		paramtypetoken = self.tokenizer.getNextToken()
-		if paramtypetoken.type != TOKEN_VARIABLE_TYPE_INTEGER:
-			self.raiseParseError("Expected Integer Function Parameter Type, got " + DEBUG_TOKENDISPLAY[paramtype.type])
+		if not paramtypetoken.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
+			self.raiseParseError("Expected Integer or Real Function Parameter Type, got " + DEBUG_TOKENDISPLAY[paramtype.type])
 		return ProcFuncParameter(paramname, paramtypetoken.type)
 
 	def parseFunctionDeclaration(self):

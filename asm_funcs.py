@@ -7,23 +7,35 @@ SYMBOL_REAL = 2
 DEBUG_SYMBOLDISPLAY = ["FUNCTION", "INT", "REAL"]
 
 def parameterPositionToRegister(pos):
-	# converts the position in the function parameter list to a register
+	raise ValueError("deprecated")
+
+def intParameterPositionToRegister(pos):
+	# First six integer parameters to functions are stored in registers.
+	# This function converts the position in the function parameter list to a register
 	# once we get > 6 parameters it will be stack pointer offsets
-	if pos == 0:
+	if pos == 1:
 		ret = "RDI"
-	elif pos == 1:
-		ret = "RSI"
 	elif pos == 2:
-		ret = "RDX"
+		ret = "RSI"
 	elif pos == 3:
-		ret = "RCX"
+		ret = "RDX"
 	elif pos == 4:
-		ret = "R8"
+		ret = "RCX"
 	elif pos == 5:
+		ret = "R8"
+	elif pos == 6:
 		ret = "R9"
 	else:
 		raise ValueError ("Invalid Parameter Position " + str(pos))
+	return ret
 
+def realParameterPositionToRegister(pos):
+	# First eight float parameters are passed in XMM0..XMM7.  After that, it would be stack pointer
+	# offsets.
+	if pos >=1 and pos <=8:
+		ret = "XMM" + str(pos-1)
+	else:
+		raise ValueError ("Invalid Parameter Position " + str(pos))
 	return ret
 
 def codeToASMComment(code):
@@ -69,7 +81,8 @@ class SymbolTable:
 	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
 		if self.exists(symbolname):
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
-
+		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_REAL, SYMBOL_INTEGER]:
+			raise ValueError ("Invalid symbol type")
 		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
 
 	def get(self, symbolname):
@@ -144,6 +157,28 @@ class Assembler:
 		ret = ".L" + str(self.next_local_label_index)
 		self.next_local_label_index += 1
 		return ret
+
+	def preserve_xmm_registers_for_func_call(self, num_registers):
+		if num_registers > 8:
+			raise ValueError ("Cannot preserve more than 8 XMM registers")
+		i = 0
+		while i < num_registers:
+			if i==0:
+				pass # can't preserve XMM0 as it will be used for the return value
+			else:
+				self.emitpushxmmreg("XMM" + str(i))
+			i += 1
+
+	def restore_xmm_registers_after_func_call(self, num_registers):
+		if num_registers > 8:
+			raise ValueError ("Cannot restore more than 8 XMM registers")
+		i = num_registers - 1;
+		while i >= 0:
+			if i==0:
+				pass # don't restore XMM0 as it will have the return value if it is a real function
+			else:
+				self.emitpopxmmreg("XMM" + str(i))
+			i -= 1
 
 	def preserve_int_registers_for_func_call(self, num_registers):
 		# push the rdi, rsi, rdx, rcx, r8, and r9
@@ -242,9 +277,12 @@ class Compiler:
 		self.obj_filename = obj_filename
 
 	def do_compile(self):
-		os.system("nasm -f elf64 -o nsm64.o nsm64.asm")
-		os.system("nasm -f elf64 -o " + self.obj_filename + " " + self.asm_filename)
+		# os.system("nasm -f elf64 -o nsm64.o nsm64.asm")
+		# os.system("nasm -f elf64 -o " + self.obj_filename + " " + self.asm_filename)
 
+		# Need to make debug symbols a flag but for now this will work
+		os.system("nasm -f elf64 -F dwarf -g -o nsm64.o nsm64.asm")
+		os.system("nasm -f elf64 -F dwarf -g -o " + self.obj_filename + " " + self.asm_filename)
 
 class Linker:
 	def __init__(self, obj_filename, exe_filename):
