@@ -1,58 +1,65 @@
 import sys
 import asm_funcs
 
-# constants for token types
-TOKEN_INT = 0
-TOKEN_REAL = 1
-TOKEN_PLUS = 2
-TOKEN_MINUS = 3
-TOKEN_MULT = 4
-TOKEN_IDIV = 5
-TOKEN_LPAREN = 6
-TOKEN_RPAREN = 7
-TOKEN_SEMICOLON = 8
-TOKEN_PERIOD = 9
-TOKEN_COLON = 10
-TOKEN_COMMA = 11
-TOKEN_ASSIGNMENT_OPERATOR = 12
-TOKEN_RELOP_EQUALS = 13
-TOKEN_RELOP_GREATER = 14
-TOKEN_RELOP_LESS = 15
-TOKEN_RELOP_GREATEREQ = 16
-TOKEN_RELOP_LESSEQ = 17
-TOKEN_RELOP_NOTEQ = 18
+TOKENID = 0
+def NEXT_TOKENID():
+	global TOKENID
+	TOKENID += 1
+	return TOKENID
+def TokDef(display_string):
+	a = (NEXT_TOKENID(), display_string)
+	return a
 
-TOKEN_PROGRAM = 19
-TOKEN_BEGIN = 20
-TOKEN_END = 21
-TOKEN_VAR = 22
-TOKEN_PROCFUNC_DECLARATION_PART = 23  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
-TOKEN_FUNCTION = 24
+# constants for token types - give each token type unique id and a string to print when debugging.
+# we could extend to using namedtuples later if we want to use this for pattern matching
+TOKEN_INT = TokDef("INT")
+TOKEN_REAL = TokDef("REAL")
+TOKEN_PLUS = TokDef("+")
+TOKEN_MINUS = TokDef("-")
+TOKEN_MULT = TokDef("*")
+TOKEN_IDIV = TokDef("DIV")
+TOKEN_LPAREN = TokDef("(")
+TOKEN_RPAREN = TokDef(")")
+TOKEN_SEMICOLON = TokDef(";")
+TOKEN_PERIOD = TokDef(".")
+TOKEN_COLON = TokDef(":")
+TOKEN_COMMA = TokDef(",")
+TOKEN_ASSIGNMENT_OPERATOR = TokDef(":=")
+TOKEN_RELOP_EQUALS = TokDef("=")
+TOKEN_RELOP_GREATER = TokDef(">")
+TOKEN_RELOP_LESS = TokDef("<")
+TOKEN_RELOP_GREATEREQ = TokDef(">=")
+TOKEN_RELOP_LESSEQ = TokDef("<=")
+TOKEN_RELOP_NOTEQ = TokDef("<>")
 
-
-TOKEN_WRITELN = 25
-TOKEN_WRITE = 26
-TOKEN_IF = 27
-TOKEN_THEN = 28
-TOKEN_ELSE = 29
-TOKEN_WHILE = 30
-TOKEN_DO = 31
-
-TOKEN_STRING = 32
-TOKEN_VARIABLE_IDENTIFIER = 33
-TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = 34
-TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = 35
-TOKEN_VARIABLE_TYPE_INTEGER = 36
-TOKEN_VARIABLE_TYPE_REAL = 37
-
-TOKEN_NOOP = 38
+TOKEN_PROGRAM = TokDef("PROGRAM")
+TOKEN_BEGIN = TokDef("BEGIN")
+TOKEN_END = TokDef("END")
+TOKEN_VAR = TokDef("VAR")
+TOKEN_PROCFUNC_DECLARATION_PART = TokDef("{Procedures/Functions}")  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
+TOKEN_FUNCTION = TokDef("FUNCTION")
 
 
-# hack for pretty printing
-DEBUG_TOKENDISPLAY = ['INT', 'REAL', '+', '-', '*', 'DIV', '(', ')', ';', '.', ':', ',', ':=', '=', '>', '<', '>=', '<=', '<>',
-					  	'PROGRAM', 'BEGIN', 'END', 'VAR', '{Procedures/Functions}', 'FUNCTION',
-					  	'WRITELN', 'WRITE', 'IF', 'THEN', 'ELSE', 'WHILE', 'DO',
-					  	'STRING', 'VARIABLE', 'VARIABLE ASSIGNMENT', 'VARIABLE EVALUATION', 'VARIABLE TYPE Integer', 'VARIABLE TYPE Real', 'NOOP']
+TOKEN_WRITELN = TokDef("WRITELN")
+TOKEN_WRITE = TokDef("WRITE")
+TOKEN_IF = TokDef("IF")
+TOKEN_THEN = TokDef("THEN")
+TOKEN_ELSE = TokDef("ELSE")
+TOKEN_WHILE = TokDef("WHILE")
+TOKEN_DO = TokDef("DO")
+
+TOKEN_STRING = TokDef("String Literal")
+TOKEN_VARIABLE_IDENTIFIER = TokDef("VARIABLE")
+TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = TokDef("VARIABLE ASSIGNMENT")
+TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = TokDef("VARIABLE EVALUATION")
+TOKEN_VARIABLE_TYPE_INTEGER = TokDef("VARIABLE TYPE: Integer")
+TOKEN_VARIABLE_TYPE_REAL = TokDef("VARIABLE TYPE: Real")
+
+TOKEN_NOOP = TokDef("NO-OP")
+
+
+def DEBUG_TOKENDISPLAY(token):
+	return token[1]
 
 
 # helper functions
@@ -123,7 +130,7 @@ class Token:
 			return False
 
 	def debugprint(self):
-		return (DEBUG_TOKENDISPLAY[self.type] + ":" + str(self.value))
+		return (DEBUG_TOKENDISPLAY(self.type) + ":" + str(self.value))
 
 class ProcFuncParameter:
 	def __init__(self, name, type):
@@ -161,7 +168,7 @@ class ProcFuncHeading:
 			elif self.parameters[i].type == TOKEN_VARIABLE_TYPE_REAL:
 				realargs += 1
 			else:
-				raise ValueError("Invalid parameter type: " + DEBUG_TOKENDISPLAY[self.parameters[i].type])
+				raise ValueError("Invalid parameter type: " + DEBUG_TOKENDISPLAY(self.parameters[i].type))
 
 			if self.parameters[i].name == paramName:
 				if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER:
@@ -313,9 +320,9 @@ class AST():
 			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
 				raise ValueError ("Invalid type right of relational op")
 			if self.children[0].expressiontype != self.children[1].expressiontype:
-				errstr = "Left of " + DEBUG_TOKENDISPLAY[self.token.type] + " type "
-				errstr += DEBUG_TOKENDISPLAY[self.children[0].expressiontype]
-				errstr += ", right has type " + DEBUG_TOKENDISPLAY[self.children[1].expressiontype]
+				errstr = "Left of " + DEBUG_TOKENDISPLAY(self.token.type) + " type "
+				errstr += DEBUG_TOKENDISPLAY(self.children[0].expressiontype)
+				errstr += ", right has type " + DEBUG_TOKENDISPLAY(self.children[1].expressiontype)
 				raise ValueError (errstr)
 			self.expressiontype = self.children[0].expressiontype
 
@@ -346,7 +353,7 @@ class AST():
 				localvarbytesneeded += 8
 				self.procFuncHeading.resultAddress = 'QWORD [RBP-' + str(localvarbytesneeded) + ']'
 			else:
-				raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY[self.procFuncHeading.returntype.type])
+				raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY(self.procFuncHeading.returntype.type))
 
 			self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
 			for i in self.procFuncHeading.parameters:
@@ -359,7 +366,7 @@ class AST():
 					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, 'QWORD [RBP-' + str(localvarbytesneeded) + ']')
 
 				else:
-					raise ValueError ("Invalid variable type : " + DEBUG_TOKENDISPLAY[i.type])
+					raise ValueError ("Invalid variable type : " + DEBUG_TOKENDISPLAY(i.type))
 
 			if not (self.procFuncHeading.localvariableAST is None):
 				for i in self.procFuncHeading.localvariableAST.children:  # localvariables is an AST with each var as a child
@@ -371,7 +378,7 @@ class AST():
 							symboltype = asm_funcs.SYMBOL_REAL
 						self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, '[RBP - ' + str(localvarbytesneeded) + ']')
 					else:
-						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY[i.type])
+						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY(i.type))
 			if localvarbytesneeded > 0:
 				assembler.emitcode("MOV RBP, RSP", "save stack pointer")
 				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local variable storage")
@@ -464,7 +471,7 @@ class AST():
 			elif self.token.type == TOKEN_RELOP_LESSEQ:
 				jumpinstr = "JLE"
 			else:
-				raise ValueError ("Invalid Relational Operator : " + DEBUG_TOKENDISPLAY[self.token.type])
+				raise ValueError ("Invalid Relational Operator : " + DEBUG_TOKENDISPLAY(self.token.type))
 
 			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("PUSH RAX")
@@ -689,7 +696,7 @@ class AST():
 			for child in self.children:
 				child.assemble(assembler, procFuncHeadingScope)
 		else:
-			raise ValueError("Unexpected Token :" + DEBUG_TOKENDISPLAY[self.token.type])
+			raise ValueError("Unexpected Token :" + DEBUG_TOKENDISPLAY(self.token.type))
 
 
 class Tokenizer:
@@ -802,7 +809,7 @@ class Tokenizer:
 		if self.curPos >= self.length:
 			errstr = ""
 			if not (requiredtokentype is None):
-				errstr = "Expected " + DEBUG_TOKENDISPLAY[requiredtokentype]
+				errstr = "Expected " + DEBUG_TOKENDISPLAY(requiredtokentype)
 			self.raiseTokenizeError("Unexpected end of input. " + errstr)
 		else:
 			# get rid of comments
@@ -915,7 +922,7 @@ class Tokenizer:
 			if not (requiredtokentype is None):
 				if ret.type != requiredtokentype:
 					self.raiseTokenizeError(
-						"Expected " + DEBUG_TOKENDISPLAY[requiredtokentype] + ", got " + DEBUG_TOKENDISPLAY[ret.type])
+						"Expected " + DEBUG_TOKENDISPLAY(requiredtokentype) + ", got " + DEBUG_TOKENDISPLAY(ret.type))
 
 			return ret
 
@@ -1008,7 +1015,7 @@ class Parser:
 		if self.tokenizer.peek() in [">", "<", "="]:
 			tok = self.tokenizer.getNextToken()
 			if not tok.isRelOp():
-				raiseParseError("Relational Operator Expected, got: " + DEBUG_TOKENDISPLAY[tok.type])
+				raiseParseError("Relational Operator Expected, got: " + DEBUG_TOKENDISPLAY(tok.type))
 			ret = AST(tok)
 			next_simple_expression = self.parseSimpleExpression()
 			ret.children.append(first_simple_expression)
@@ -1086,7 +1093,7 @@ class Parser:
 				ret = AST(tok)
 				ret.children.append(self.parseSimpleExpression())
 			else:
-				# self.raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY[tok.type])
+				# self.raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY(tok.type))
 			    # roll the parser back
 				self.tokenizer.curPos = startpos
 				ret = AST(Token(TOKEN_NOOP, None))
@@ -1142,7 +1149,7 @@ class Parser:
 				colon_token = self.tokenizer.getNextToken(TOKEN_COLON)
 				type_token = self.tokenizer.getNextToken()
 				if type_token.type not in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
-					self.raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY[type_token.type])
+					self.raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY(type_token.type))
 				semi_token = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
 				type_token.value = ident_token.value
@@ -1157,7 +1164,7 @@ class Parser:
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		paramtypetoken = self.tokenizer.getNextToken()
 		if not paramtypetoken.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
-			self.raiseParseError("Expected Integer or Real Function Parameter Type, got " + DEBUG_TOKENDISPLAY[paramtype.type])
+			self.raiseParseError("Expected Integer or Real Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtype.type))
 		return ProcFuncParameter(paramname, paramtypetoken.type)
 
 	def parseFunctionDeclaration(self):
@@ -1184,7 +1191,7 @@ class Parser:
 		if functype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 			funcheading.returntype = functype
 		else:
-			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY[functype.type])
+			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype.type))
 		semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
 		if self.tokenizer.peekMatchStringAndSpace("var"):
