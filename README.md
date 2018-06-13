@@ -20,7 +20,7 @@ Text in /* */ is a comment
 <declaration part> ::= [<variable declaration part>] [<procedure and function declaration part>]
 <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
 <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
-<type> ::= "integer"                                 /* Fred note - only handling integers at this point */
+<type> ::= "integer" | "real"   
 <procedure and function declaration part> ::= {<function declaration> ";"}
 <function declaration> ::= <function heading> ";" <function body>
 <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
@@ -51,7 +51,7 @@ Text in /* */ is a comment
 <letter> ::= "A" .. "Z" || "a" .. "z"
 <digit> ::= "0" .. "9"
 <addition operator> ::= "+" | "-"
-<multiplication operator> ::= "*" | "DIV"
+<multiplication operator> ::= "*" | "/", "DIV"
 <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 ```
  

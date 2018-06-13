@@ -18,6 +18,7 @@ TOKEN_PLUS = TokDef("+")
 TOKEN_MINUS = TokDef("-")
 TOKEN_MULT = TokDef("*")
 TOKEN_IDIV = TokDef("DIV")
+TOKEN_DIV = TokDef("/")
 TOKEN_LPAREN = TokDef("(")
 TOKEN_RPAREN = TokDef(")")
 TOKEN_SEMICOLON = TokDef(";")
@@ -115,7 +116,7 @@ def isSymbol(char):
 # <letter> ::= "A" .. "Z" || "a" .. "z"
 # <digit> ::= "0" .. "9"
 # <addition operator> ::= "+" | "-"
-# <multiplication operator> ::= "*" | "DIV"
+# <multiplication operator> ::= "*" | "/", "DIV"
 # <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 
 class Token:
@@ -268,6 +269,8 @@ class AST():
 			if self.children[1].expressiontype != TOKEN_INT:
 				raise ValueError ("Second operand of DIV must be an Integer.")
 			self.expressiontype = TOKEN_INT
+		elif self.token.type == TOKEN_DIV:
+			self.expressiontype = TOKEN_REAL
 		elif self.token.type in [TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT, TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION]:
 			foundit = False
 			if not parentProcFuncHeading is None:
@@ -412,7 +415,7 @@ class AST():
 			assembler.emitcode("MOV RAX, " + str(self.token.value))
 		elif self.token.type == TOKEN_REAL:
 			assembler.emitcode("MOVSD XMM0, [" + assembler.real_literals[self.token.value] + "]")
-		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT]:
+		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT, TOKEN_DIV]:
 			if self.expressiontype == TOKEN_INT:
 				# all children must be ints
 				self.children[0].assemble(assembler, procFuncHeadingScope)
@@ -427,8 +430,10 @@ class AST():
 				elif self.token.type == TOKEN_MINUS:
 					assembler.emitcode("SUB RCX, RAX")
 					assembler.emitcode("MOV RAX, RCX")  # it might be quicker to sub RAX, RCX and NEG RAX
-				else:
+				elif self.token.type == TOKEN_MULT:
 					assembler.emitcode("IMUL RAX, RCX")
+				else:
+					raise ValueError ("Floating point division has integer type - error")
 			else:
 				# integer children will be in RAX and have to be moved to XMM0
 				# real children will already be in XMM0
@@ -445,8 +450,11 @@ class AST():
 				elif self.token.type == TOKEN_MINUS:
 					assembler.emitcode("SUBSD XMM8, XMM0")
 					assembler.emitcode("MOVSD XMM0, XMM8")
-				else:
+				elif self.token.type == TOKEN_MULT:
 					assembler.emitcode("MULSD XMM0, XMM8")
+				elif self.token.type == TOKEN_DIV:
+					assembler.emitcode("DIVSD XMM8, XMM0")
+					assembler.emitcode("MOVSD XMM0, XMM8")
 
 		elif self.token.type == TOKEN_IDIV:
 			self.children[0].assemble(assembler, procFuncHeadingScope)
@@ -881,7 +889,7 @@ class Tokenizer:
 				elif sym == "-":
 					ret = Token(TOKEN_MINUS, None)
 				elif sym == "/":
-					self.raiseTokenizeError("Cannot handle floating point division yet")
+					ret = Token(TOKEN_DIV, None)
 				elif sym == "*":
 					ret = Token(TOKEN_MULT, None)
 				elif sym == "(":
@@ -988,7 +996,7 @@ class Parser:
 	def parseTerm(self):
 		# <term> ::= <factor> { <multiplication operator> <factor> }
 		ret = self.parseFactor()
-		while self.tokenizer.peek() == "*" or self.tokenizer.peekMatchStringAndSpace("div"):
+		while self.tokenizer.peek() in ["*","/"] or self.tokenizer.peekMatchStringAndSpace("div"):
 			multdiv = AST(self.tokenizer.getNextToken())
 			multdiv.children.append(ret)
 			nextchild = self.parseFactor()
