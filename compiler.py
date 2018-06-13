@@ -683,10 +683,23 @@ class AST():
 							assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
 						elif self.children[i].expressiontype == TOKEN_REAL:
 							realparams += 1
-							assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
+							# If a function takes more than one Real parameter, the first parameter will be overwritten with the value of the last.
+							# unless we do this.  Reason: all floating point calculations put their result into XMM0.  First parameter to function
+							# gets its value put in XMM0, then when system goes to calculate the second Real parameter, it first stores the
+							# value in XMM0 (when it is evaluated) and then pushes it to XMM1 since XMM1 holds the second parameter.
+							# Fix is to calculate the first parameter, stash it, then grab it back.
+							if realparams == 1:
+								# XMM0 contains the value after the self.children[i].assemble() from above
+								assembler.emitpushxmmreg("XMM0")
+							else:
+								assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
+
 						else:
 							raise ValueError("Invalid expressiontype")
 						i += 1
+
+					if realparams > 0:
+						assembler.emitpopxmmreg("XMM0")
 
 					assembler.emitcode("CALL " + symbol.label, "invoke function " + symbol.procfuncheading.name + '()')
 					assembler.restore_xmm_registers_after_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
