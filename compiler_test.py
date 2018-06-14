@@ -52,10 +52,10 @@ def dotest(infilename, resultfilename):
 			os.system("rm " + testoutputfilename)
 
 			return True
-		else:
+		else: # pragma: no cover
 			print("FAIL: " + infilename)
 			return False
-	except Exception as e:
+	except Exception as e: # pragma: no cover
 		print("FAIL: " + infilename)
 		print(e)
 		return False

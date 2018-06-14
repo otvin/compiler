@@ -6,9 +6,6 @@ SYMBOL_REAL = 2
 
 DEBUG_SYMBOLDISPLAY = ["FUNCTION", "INT", "REAL"]
 
-def parameterPositionToRegister(pos):
-	raise ValueError("deprecated")
-
 def intParameterPositionToRegister(pos):
 	# First six integer parameters to functions are stored in registers.
 	# This function converts the position in the function parameter list to a register
@@ -25,7 +22,7 @@ def intParameterPositionToRegister(pos):
 		ret = "R8"
 	elif pos == 6:
 		ret = "R9"
-	else:
+	else: # pragma: no cover
 		raise ValueError ("Invalid Parameter Position " + str(pos))
 	return ret
 
@@ -34,7 +31,7 @@ def realParameterPositionToRegister(pos):
 	# offsets.
 	if pos >=1 and pos <=8:
 		ret = "XMM" + str(pos-1)
-	else:
+	else: # pragma: no cover
 		raise ValueError ("Invalid Parameter Position " + str(pos))
 	return ret
 
@@ -79,14 +76,14 @@ class SymbolTable:
 			return False
 
 	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
-		if self.exists(symbolname):
+		if self.exists(symbolname): # pragma: no cover
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
-		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_REAL, SYMBOL_INTEGER]:
+		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_REAL, SYMBOL_INTEGER]: # pragma: no cover
 			raise ValueError ("Invalid symbol type")
 		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
 
 	def get(self, symbolname):
-		if symbolname not in self.symbols:
+		if symbolname not in self.symbols: # pragma: no cover
 			if self.symbols is None:
 				symbolstr = "None"
 			else:
@@ -159,7 +156,7 @@ class Assembler:
 		return ret
 
 	def preserve_xmm_registers_for_func_call(self, num_registers):
-		if num_registers > 8:
+		if num_registers > 8: # pragma: no cover
 			raise ValueError ("Cannot preserve more than 8 XMM registers")
 		i = 0
 		while i < num_registers:
@@ -170,7 +167,7 @@ class Assembler:
 			i += 1
 
 	def restore_xmm_registers_after_func_call(self, num_registers):
-		if num_registers > 8:
+		if num_registers > 8: # pragma: no cover
 			raise ValueError ("Cannot restore more than 8 XMM registers")
 		i = num_registers - 1;
 		while i >= 0:

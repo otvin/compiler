@@ -80,6 +80,24 @@ Comments between the ```program``` keyword and a ```function``` keyword when the
 
 If a function takes a Real parameter, and an expression of type Integer is passed in, the Integer will not be converted to Real.  Workaround: multiply by 1.0 to convert to Real.
 
+### Code Coverage:
+
+Running ```compiler_test.py```, with all debug and error condition code excluded via ```# pragma: no cover```
+
+Code coverage:
+    
+    ```asm_funcs.py: 92%```
+    
+    ```compiler.py: 97%```
+    
+    All the code missed is expected
+    
+Branch coverage:
+
+    ```asm_funcs.py: 87%```
+    
+    ```compiler.py: 95%```
+
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.
 

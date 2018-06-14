@@ -59,7 +59,7 @@ TOKEN_VARIABLE_TYPE_REAL = TokDef("VARIABLE TYPE: Real")
 TOKEN_NOOP = TokDef("NO-OP")
 
 
-def DEBUG_TOKENDISPLAY(token):
+def DEBUG_TOKENDISPLAY(token): # pragma: no cover
 	return token[1]
 
 
@@ -130,7 +130,7 @@ class Token:
 		else:
 			return False
 
-	def debugprint(self):
+	def debugprint(self): # pragma: no cover
 		return (DEBUG_TOKENDISPLAY(self.type) + ":" + str(self.value))
 
 class ProcFuncParameter:
@@ -168,7 +168,7 @@ class ProcFuncHeading:
 				intargs += 1
 			elif self.parameters[i].type == TOKEN_VARIABLE_TYPE_REAL:
 				realargs += 1
-			else:
+			else: # pragma: no cover
 				raise ValueError("Invalid parameter type: " + DEBUG_TOKENDISPLAY(self.parameters[i].type))
 
 			if self.parameters[i].name == paramName:
@@ -196,7 +196,7 @@ class AST():
 		self.expressiontype = None # will be a token type: TOKEN_INT or TOKEN_REAL
 		self.children = []
 
-	def rpn_print(self):
+	def rpn_print(self): # pragma: no cover
 		for x in self.children:
 			x.rpn_print()
 		typestr = ""
@@ -224,17 +224,17 @@ class AST():
 
 	def find_variable_declarations(self, assembler):
 		if self.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
-			if self.token.value in assembler.variable_symbol_table.symbollist():
+			if self.token.value in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError ("Variable redefined: " + self.token.value)
 			else:
 				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_INTEGER, assembler.generate_variable_name('int'))
 		elif self.token.type == TOKEN_VARIABLE_TYPE_REAL:
-			if self.token.value in assembler.variable_symbol_table.symbollist():
+			if self.token.value in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError ("Variable redefined: " + self.token.value)
 			else:
 				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_REAL, assembler.generate_variable_name('real'))
 		elif self.token.type == TOKEN_FUNCTION:
-			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist():
+			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
 			else:
 				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_FUNCTION, assembler.generate_variable_name("func"), self.procFuncHeading)
@@ -255,18 +255,18 @@ class AST():
 			self.expressiontype = TOKEN_REAL
 		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT]:
 			# validation check
-			if self.children[0].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
+			if self.children[0].expressiontype not in [TOKEN_INT, TOKEN_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type for first operand")
-			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
+			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type for second operand")
 			if self.children[0].expressiontype == TOKEN_INT and self.children[1].expressiontype == TOKEN_INT:
 				self.expressiontype = TOKEN_INT
 			else:
 				self.expressiontype = TOKEN_REAL
 		elif self.token.type == TOKEN_IDIV:
-			if self.children[0].expressiontype != TOKEN_INT:
+			if self.children[0].expressiontype != TOKEN_INT: # pragma: no cover
 				raise ValueError ("First operand of DIV must be an Integer.")
-			if self.children[1].expressiontype != TOKEN_INT:
+			if self.children[1].expressiontype != TOKEN_INT: # pragma: no cover
 				raise ValueError ("Second operand of DIV must be an Integer.")
 			self.expressiontype = TOKEN_INT
 		elif self.token.type == TOKEN_DIV:
@@ -315,14 +315,14 @@ class AST():
 						self.expressiontype = TOKEN_INT
 					elif myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_REAL:
 						self.expressiontype = TOKEN_REAL
-					else:
-						raise ValueError ("I need to know how I got here to know what I have to get the type correct")
+					else: # pragma: no cover
+						raise ValueError ("Invalid Expression Type")
 		elif self.token.isRelOp():
-			if self.children[0].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
+			if self.children[0].expressiontype not in [TOKEN_INT, TOKEN_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type left of relational op")
-			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]:
+			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type right of relational op")
-			if self.children[0].expressiontype != self.children[1].expressiontype:
+			if self.children[0].expressiontype != self.children[1].expressiontype: # pragma: no cover
 				errstr = "Left of " + DEBUG_TOKENDISPLAY(self.token.type) + " type "
 				errstr += DEBUG_TOKENDISPLAY(self.children[0].expressiontype)
 				errstr += ", right has type " + DEBUG_TOKENDISPLAY(self.children[1].expressiontype)
@@ -355,7 +355,7 @@ class AST():
 			if self.procFuncHeading.returntype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 				localvarbytesneeded += 8
 				self.procFuncHeading.resultAddress = 'QWORD [RBP-' + str(localvarbytesneeded) + ']'
-			else:
+			else: # pragma: no cover
 				raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY(self.procFuncHeading.returntype.type))
 
 			self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
@@ -368,7 +368,7 @@ class AST():
 						symboltype = asm_funcs.SYMBOL_REAL
 					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, 'QWORD [RBP-' + str(localvarbytesneeded) + ']')
 
-				else:
+				else: # pragma: no cover
 					raise ValueError ("Invalid variable type : " + DEBUG_TOKENDISPLAY(i.type))
 
 			if not (self.procFuncHeading.localvariableAST is None):
@@ -380,7 +380,7 @@ class AST():
 						else:
 							symboltype = asm_funcs.SYMBOL_REAL
 						self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, '[RBP - ' + str(localvarbytesneeded) + ']')
-					else:
+					else: # pragma: no cover
 						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY(i.type))
 			if localvarbytesneeded > 0:
 				assembler.emitcode("MOV RBP, RSP", "save stack pointer")
@@ -432,7 +432,7 @@ class AST():
 					assembler.emitcode("MOV RAX, RCX")  # it might be quicker to sub RAX, RCX and NEG RAX
 				elif self.token.type == TOKEN_MULT:
 					assembler.emitcode("IMUL RAX, RCX")
-				else:
+				else: # pragma: no cover
 					raise ValueError ("Floating point division has integer type - error")
 			else:
 				# integer children will be in RAX and have to be moved to XMM0
@@ -478,7 +478,7 @@ class AST():
 				jumpinstr = "JL"
 			elif self.token.type == TOKEN_RELOP_LESSEQ:
 				jumpinstr = "JLE"
-			else:
+			else: # pragma: no cover
 				raise ValueError ("Invalid Relational Operator : " + DEBUG_TOKENDISPLAY(self.token.type))
 
 			self.children[0].assemble(assembler, procFuncHeadingScope)
@@ -516,7 +516,7 @@ class AST():
 				assembler.emitcomment('... ELSE ...')
 				self.children[2].assemble(assembler, procFuncHeadingScope)
 				assembler.emitlabel(skipelselabel)
-			else:
+			else: # pragma: no cover
 				raise ValueError ("Invalid number of tokens following IF.  Expected 2 or 3, got: " + str(len(self.children)))
 		elif self.token.type == TOKEN_WHILE:
 			beginwhilelabel = assembler.generate_local_label()
@@ -534,7 +534,7 @@ class AST():
 			assembler.emitcomment(self.comment)
 			for child in self.children:
 				if child.token.type == TOKEN_STRING:
-					if not (child.token.value in assembler.string_literals):
+					if not (child.token.value in assembler.string_literals): # pragma: no cover
 						raise ValueError ("No literal for string :" + child.token.value)
 					else:
 						data_name = assembler.string_literals[child.token.value]
@@ -560,7 +560,7 @@ class AST():
 				elif child.expressiontype == TOKEN_REAL:
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in XMM0
 					assembler.emitcode("call prtdbl")
-				else:
+				else: # pragma: no cover
 					raise ValueError ("Do not know how to write this type.")
 			if self.token.type == TOKEN_WRITELN:
 				assembler.emitcode("push rax")
@@ -584,7 +584,7 @@ class AST():
 						assembler.emitcode("MOV " + reg + ", RAX")
 					elif self.children[0].expressiontype == TOKEN_REAL:
 						assembler.emitcode("MOVSD " + reg + ", XMM0")
-					else:
+					else: # pragma: no cover
 						raise ValueError("Invalid expressiontype")
 				else:
 					# If this is a local variable in a function/proc we refer to it via the offset from RBP
@@ -596,7 +596,7 @@ class AST():
 								assembler.emitcode("MOV " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", RAX")
 							elif self.children[0].expressiontype == TOKEN_REAL:
 								assembler.emitcode("MOVSD " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", XMM0")
-							else:
+							else: # pragma: no cover
 								raise ValueError("Invalid expressiontype")
 			if found_symbol == False:
 				symbol = assembler.variable_symbol_table.get(self.token.value)
@@ -614,11 +614,11 @@ class AST():
 								assembler.emitcode("MOV " + procFuncHeadingScope.resultAddress + ", RAX")
 							else:
 								assembler.emitcode("MOVSD " + procFuncHeadingScope.resultAddress + ", XMM0")
-						else:
+						else: # pragma: no cover
 							raise ValueError ("Cannot assign to a function inside another function: " + symbol.procfuncheading.name)
-					else:
+					else: # pragma: no cover
 						raise ValueError ("Cannot assign to function outside of function scope: " + symbol.procfuncheading.name)
-				else:
+				else: # pragma: no cover
 					raise ValueError ("Invalid variable type :" + asm_funcs.DEBUG_SYMBOLDISPLAY[symbol.type])
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:
 			# is this symbol a function parameter or local variable?
@@ -637,7 +637,7 @@ class AST():
 							assembler.emitcode("MOV RAX, " + symbol.label)
 						elif symbol.type == asm_funcs.SYMBOL_REAL:
 							assembler.emitcode("MOVSD XMM0, " + symbol.label)
-						else:
+						else: # pragma: no cover
 							raise ValueError ("Invalid Symbol Type")
 				if found_symbol == False:
 					reg = procFuncHeadingScope.getRegisterForParameterName(self.token.value)
@@ -650,7 +650,7 @@ class AST():
 							assembler.emitcode("MOV RAX, " + reg)
 						elif paramtype == TOKEN_VARIABLE_TYPE_REAL:
 							assembler.emitcode("MOVSD XMM0, " + reg)
-						else:
+						else: # pragma: no cover
 							raise ValueError("Invalid Parameter Type")
 
 			if found_symbol == False:
@@ -694,7 +694,7 @@ class AST():
 							else:
 								assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
 
-						else:
+						else: # pragma: no cover
 							raise ValueError("Invalid expressiontype")
 						i += 1
 
@@ -705,7 +705,7 @@ class AST():
 					assembler.restore_xmm_registers_after_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
 					assembler.restore_int_registers_after_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
 
-				else:
+				else: # pragma: no cover
 					raise ValueError ("Invalid variable type :" + vartuple[0])
 		elif self.token.type == TOKEN_FUNCTION:
 			pass # function declarations are asseembled earlier
@@ -716,7 +716,7 @@ class AST():
 		elif self.token.type in [TOKEN_BEGIN, TOKEN_PROCFUNC_DECLARATION_PART, TOKEN_PROGRAM] :
 			for child in self.children:
 				child.assemble(assembler, procFuncHeadingScope)
-		else:
+		else: # pragma: no cover
 			raise ValueError("Unexpected Token :" + DEBUG_TOKENDISPLAY(self.token.type))
 
 
@@ -728,7 +728,7 @@ class Tokenizer:
 		self.line_number = 1
 		self.line_position = 1
 
-	def raiseTokenizeError(self, errormsg):
+	def raiseTokenizeError(self, errormsg): # pragma: no cover
 		errstr = "Parse Error: " + errormsg + "\n"
 		errstr += "Line: " + str(self.line_number) + ", Position: " + str(self.line_position) + "\n"
 		if self.peek() == "":
@@ -759,7 +759,7 @@ class Tokenizer:
 
 
 	def eat(self):
-		if self.curPos >= self.length:
+		if self.curPos >= self.length: # pragma: no cover
 			raise ValueError("Length Exceeded")
 		else:
 			retChar = self.text[self.curPos]
@@ -774,7 +774,7 @@ class Tokenizer:
 			while self.peek().isalnum():
 				retVal += self.eat()
 			return retVal
-		else:
+		else: # pragma: no cover
 			self.raiseTokenizeError("Identifiers must begin with alpha character")
 
 	def getNumber(self):
@@ -792,12 +792,12 @@ class Tokenizer:
 			else:
 				return int(retval)
 
-		else:
+		else: # pragma: no cover
 			self.raiseTokenizeError("Numbers must be numeric")
 
 	def getStringLiteral(self):
-		# <string literal> = "'" {<any character other than apostrophe or quote mark>} "'"
-		if self.peek() != "'":
+		# <string literal> = "'" {<any character>} "'"  # note - apostrophes in string literals have to be escaped by using two apostrophes
+		if self.peek() != "'": # pragma: no cover
 			self.raiseTokenizeError("Strings must begin with an apostrophe.")
 		self.eat()
 		ret = ""
@@ -809,7 +809,7 @@ class Tokenizer:
 				ret += "'"
 				self.eat() #eat first apostrophe
 				self.eat() #eat second apostrophe
-			elif self.peek() == "":
+			elif self.peek() == "": # pragma: no cover
 				self.raiseTokenizeError("End of input reached inside quoted string")
 			else:
 				ret += self.eat()
@@ -820,7 +820,7 @@ class Tokenizer:
 	def getSymbol(self):
 		if isSymbol(self.peek()):
 			return self.eat()
-		else:
+		else: # pragma: no cover
 			self.raiseTokenizeError("Symbol Expected")
 
 	def getNextToken(self, requiredtokentype=None):
@@ -828,10 +828,10 @@ class Tokenizer:
 		# will lead to validation.
 
 		if self.curPos >= self.length:
-			errstr = ""
-			if not (requiredtokentype is None):
-				errstr = "Expected " + DEBUG_TOKENDISPLAY(requiredtokentype)
-			self.raiseTokenizeError("Unexpected end of input. " + errstr)
+			errstr = "" # pragma: no cover
+			if not (requiredtokentype is None): # pragma: no cover
+				errstr = "Expected " + DEBUG_TOKENDISPLAY(requiredtokentype) # pragma: no cover
+			self.raiseTokenizeError("Unexpected end of input. " + errstr) # pragma: no cover
 		else:
 			# get rid of comments
 			while self.peek() == "{":
@@ -931,7 +931,7 @@ class Tokenizer:
 					ret = Token(TOKEN_RELOP_LESS, None)
 				elif sym == "<=":
 					ret = Token(TOKEN_RELOP_LESSEQ, None)
-				else:
+				else: # pragma: no cover
 					self.raiseTokenizeError("Unrecognized Token: " + sym)
 
 			while self.peek().isspace():
@@ -941,9 +941,8 @@ class Tokenizer:
 				self.eat()
 
 			if not (requiredtokentype is None):
-				if ret.type != requiredtokentype:
-					self.raiseTokenizeError(
-						"Expected " + DEBUG_TOKENDISPLAY(requiredtokentype) + ", got " + DEBUG_TOKENDISPLAY(ret.type))
+				if ret.type != requiredtokentype: # pragma: no cover
+					self.raiseTokenizeError("Expected " + DEBUG_TOKENDISPLAY(requiredtokentype) + ", got " + DEBUG_TOKENDISPLAY(ret.type))
 
 			return ret
 
@@ -954,7 +953,7 @@ class Parser:
 		self.AST = None
 		self.asssembler = None
 
-	def raiseParseError(self, errormsg):
+	def raiseParseError(self, errormsg): # pragma: no cover
 		errstr = "Parse Error: " + errormsg + "\n"
 		errstr += "Line: " + str(self.tokenizer.line_number) + ", Position: " + str(self.tokenizer.line_position) + "\n"
 		if self.tokenizer.peek() == "":
@@ -1035,7 +1034,7 @@ class Parser:
 		first_simple_expression = self.parseSimpleExpression()
 		if self.tokenizer.peek() in [">", "<", "="]:
 			tok = self.tokenizer.getNextToken()
-			if not tok.isRelOp():
+			if not tok.isRelOp(): # pragma: no cover
 				raiseParseError("Relational Operator Expected, got: " + DEBUG_TOKENDISPLAY(tok.type))
 			ret = AST(tok)
 			next_simple_expression = self.parseSimpleExpression()
@@ -1169,7 +1168,7 @@ class Parser:
 				ident_token = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
 				colon_token = self.tokenizer.getNextToken(TOKEN_COLON)
 				type_token = self.tokenizer.getNextToken()
-				if type_token.type not in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
+				if type_token.type not in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]: # pragma: no cover
 					self.raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY(type_token.type))
 				semi_token = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
@@ -1184,7 +1183,7 @@ class Parser:
 		paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER).value
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		paramtypetoken = self.tokenizer.getNextToken()
-		if not paramtypetoken.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
+		if not paramtypetoken.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]: # pragma: no cover
 			self.raiseParseError("Expected Integer or Real Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtype.type))
 		return ProcFuncParameter(paramname, paramtypetoken.type)
 
@@ -1212,7 +1211,7 @@ class Parser:
 		if functype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 			funcheading.returntype = functype
 		else:
-			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype.type))
+			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype.type)) # pragma: no cover
 		semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
 		if self.tokenizer.peekMatchStringAndSpace("var"):
@@ -1254,7 +1253,7 @@ class Parser:
 
 		statementPart = self.parseStatementPart()
 		period = self.tokenizer.getNextToken(TOKEN_PERIOD)
-		if self.tokenizer.peek() != "":
+		if self.tokenizer.peek() != "": # pragma: no cover
 			raiseParseError("Unexpected character after period " + self.tokenizer.peek())
 
 		if not (variable_declarations is None):  # variable declarations are optional
@@ -1295,7 +1294,7 @@ class Parser:
 		self.assembler.cleanup()
 
 
-def main():
+def main(): # pragma: no cover
 	if len(sys.argv) < 2:
 		print("Usage: python3 compiler.py [filename]")
 		sys.exit()
@@ -1334,5 +1333,5 @@ def main():
 	print("Done.\n")
 
 
-if __name__ == '__main__':
+if __name__ == '__main__': # pragma: no cover
 	main()
