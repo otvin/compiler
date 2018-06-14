@@ -40,7 +40,6 @@ TOKEN_VAR = TokDef("VAR")
 TOKEN_PROCFUNC_DECLARATION_PART = TokDef("{Procedures/Functions}")  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
 TOKEN_FUNCTION = TokDef("FUNCTION")
 
-
 TOKEN_WRITELN = TokDef("WRITELN")
 TOKEN_WRITE = TokDef("WRITE")
 TOKEN_IF = TokDef("IF")
@@ -58,6 +57,9 @@ TOKEN_VARIABLE_TYPE_REAL = TokDef("VARIABLE TYPE: Real")
 
 TOKEN_NOOP = TokDef("NO-OP")
 
+
+EXPRESSIONTYPE_INT = 0
+EXPRESSIONTYPE_REAL = 1
 
 def DEBUG_TOKENDISPLAY(token): # pragma: no cover
 	return token[1]
@@ -90,7 +92,7 @@ def isSymbol(char):
 # <function declaration> ::= <function heading> ";" <function body>
 # <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
 # <function body> ::= [<variable declaration part>] <statement part>
-# <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 parameters max at this time */
+# <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 # <statement part> ::= "begin" <statement sequence> "end"
 # <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
 # <statement sequence> ::= <statement> | <statement> ';' <statement sequence>
@@ -193,16 +195,16 @@ class AST():
 		self.token = token
 		self.comment = comment # will get put on the line emitted in the assembly code if populated.
 		self.procFuncHeading = None  # only used for procs and funcs
-		self.expressiontype = None # will be a token type: TOKEN_INT or TOKEN_REAL
+		self.expressiontype = None # will be EXPRESSIONTYPE_INT or EXPRESSIONTYPE_REAL
 		self.children = []
 
 	def rpn_print(self): # pragma: no cover
 		for x in self.children:
 			x.rpn_print()
 		typestr = ""
-		if self.expressiontype == TOKEN_INT:
+		if self.expressiontype == EXPRESSIONTYPE_INT:
 			typestr = "Type: Integer |"
-		elif self.expressiontype == TOKEN_REAL:
+		elif self.expressiontype == EXPRESSIONTYPE_REAL:
 			typestr = "Type: Real |"
 		print(typestr + self.token.debugprint())
 
@@ -242,45 +244,45 @@ class AST():
 			for child in self.children:
 				child.find_variable_declarations(assembler)
 
-	def process_numeric_types(self, assembler, parentProcFuncHeading = None):
+	def static_type_check(self, assembler, parentProcFuncHeading = None):
 		for child in self.children:
 			if not self.procFuncHeading is None:
-				child.process_numeric_types(assembler, self.procFuncHeading)
+				child.static_type_check(assembler, self.procFuncHeading)
 			else:
-				child.process_numeric_types(assembler, parentProcFuncHeading)
+				child.static_type_check(assembler, parentProcFuncHeading)
 
 		if self.token.type == TOKEN_INT:
-			self.expressiontype = TOKEN_INT
+			self.expressiontype = EXPRESSIONTYPE_INT
 		elif self.token.type == TOKEN_REAL:
-			self.expressiontype = TOKEN_REAL
+			self.expressiontype = EXPRESSIONTYPE_REAL
 		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT]:
 			# validation check
-			if self.children[0].expressiontype not in [TOKEN_INT, TOKEN_REAL]: # pragma: no cover
+			if self.children[0].expressiontype not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type for first operand")
-			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]: # pragma: no cover
+			if self.children[1].expressiontype not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type for second operand")
-			if self.children[0].expressiontype == TOKEN_INT and self.children[1].expressiontype == TOKEN_INT:
-				self.expressiontype = TOKEN_INT
+			if self.children[0].expressiontype == EXPRESSIONTYPE_INT and self.children[1].expressiontype == EXPRESSIONTYPE_INT:
+				self.expressiontype = EXPRESSIONTYPE_INT
 			else:
-				self.expressiontype = TOKEN_REAL
+				self.expressiontype = EXPRESSIONTYPE_REAL
 		elif self.token.type == TOKEN_IDIV:
-			if self.children[0].expressiontype != TOKEN_INT: # pragma: no cover
+			if self.children[0].expressiontype != EXPRESSIONTYPE_INT: # pragma: no cover
 				raise ValueError ("First operand of DIV must be an Integer.")
-			if self.children[1].expressiontype != TOKEN_INT: # pragma: no cover
+			if self.children[1].expressiontype != EXPRESSIONTYPE_INT: # pragma: no cover
 				raise ValueError ("Second operand of DIV must be an Integer.")
-			self.expressiontype = TOKEN_INT
+			self.expressiontype = EXPRESSIONTYPE_INT
 		elif self.token.type == TOKEN_DIV:
-			self.expressiontype = TOKEN_REAL
+			self.expressiontype = EXPRESSIONTYPE_REAL
 		elif self.token.type in [TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT, TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION]:
 			foundit = False
 			if not parentProcFuncHeading is None:
 				for param in parentProcFuncHeading.parameters:
 					if param.name == self.token.value:
 						if param.type == TOKEN_VARIABLE_TYPE_INTEGER:
-							self.expressiontype = TOKEN_INT
+							self.expressiontype = EXPRESSIONTYPE_INT
 							foundit = True
 						elif param.type == TOKEN_VARIABLE_TYPE_REAL:
-							self.expressiontype = TOKEN_REAL
+							self.expressiontype = EXPRESSIONTYPE_REAL
 							foundit = True
 
 			if foundit == False:
@@ -292,9 +294,9 @@ class AST():
 							if localvar.token.value == self.token.value:
 								foundit = True
 								if localvar.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
-									self.expressiontype = TOKEN_INT
+									self.expressiontype = EXPRESSIONTYPE_INT
 								elif localvar.token.type == TOKEN_VARIABLE_TYPE_REAL:
-									self.expreeiontype = TOKEN_REAL
+									self.expressiontype = EXPRESSIONTYPE_REAL
 								break
 
 			if foundit == False:
@@ -307,20 +309,20 @@ class AST():
 				if myvar is None:
 					myvar = assembler.variable_symbol_table.get(self.token.value)
 				if myvar.type == asm_funcs.SYMBOL_INTEGER:
-					self.expressiontype = TOKEN_INT
+					self.expressiontype = EXPRESSIONTYPE_INT
 				elif myvar.type == asm_funcs.SYMBOL_REAL:
-					self.expressiontype = TOKEN_REAL
+					self.expressiontype = EXPRESSIONTYPE_REAL
 				elif myvar.type == asm_funcs.SYMBOL_FUNCTION:
 					if myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
-						self.expressiontype = TOKEN_INT
+						self.expressiontype = EXPRESSIONTYPE_INT
 					elif myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_REAL:
-						self.expressiontype = TOKEN_REAL
+						self.expressiontype = EXPRESSIONTYPE_REAL
 					else: # pragma: no cover
 						raise ValueError ("Invalid Expression Type")
 		elif self.token.isRelOp():
-			if self.children[0].expressiontype not in [TOKEN_INT, TOKEN_REAL]: # pragma: no cover
+			if self.children[0].expressiontype not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type left of relational op")
-			if self.children[1].expressiontype not in [TOKEN_INT, TOKEN_REAL]: # pragma: no cover
+			if self.children[1].expressiontype not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type right of relational op")
 			if self.children[0].expressiontype != self.children[1].expressiontype: # pragma: no cover
 				errstr = "Left of " + DEBUG_TOKENDISPLAY(self.token.type) + " type "
@@ -416,7 +418,7 @@ class AST():
 		elif self.token.type == TOKEN_REAL:
 			assembler.emitcode("MOVSD XMM0, [" + assembler.real_literals[self.token.value] + "]")
 		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT, TOKEN_DIV]:
-			if self.expressiontype == TOKEN_INT:
+			if self.expressiontype == EXPRESSIONTYPE_INT:
 				# all children must be ints
 				self.children[0].assemble(assembler, procFuncHeadingScope)
 				# RAX now contains value of the first child
@@ -438,11 +440,11 @@ class AST():
 				# integer children will be in RAX and have to be moved to XMM0
 				# real children will already be in XMM0
 				self.children[0].assemble(assembler, procFuncHeadingScope)
-				if self.children[0].expressiontype == TOKEN_INT:
+				if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
 					assembler.emitcode("CVTSI2SD XMM0, RAX")
 				assembler.emitpushxmmreg("XMM0")
 				self.children[1].assemble(assembler, procFuncHeadingScope)
-				if self.children[1].expressiontype == TOKEN_INT:
+				if self.children[1].expressiontype == EXPRESSIONTYPE_INT:
 					assembler.emitcode("CVTSI2SD XMM0, RAX")
 				assembler.emitpopxmmreg("XMM8")
 				if self.token.type == TOKEN_PLUS:
@@ -551,13 +553,13 @@ class AST():
 						assembler.emitcode("pop rsi")
 						assembler.emitcode("pop rdi")
 						assembler.emitcode("pop rax")
-				elif child.expressiontype == TOKEN_INT:
+				elif child.expressiontype == EXPRESSIONTYPE_INT:
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in RAX
 					assembler.emitcode("push rdi")
 					assembler.emitcode("mov rdi, rax") # first parameter of functions should be in RDI
 					assembler.emitcode("call prtdec","imported from nsm64")
 					assembler.emitcode("pop rdi")
-				elif child.expressiontype == TOKEN_REAL:
+				elif child.expressiontype == EXPRESSIONTYPE_REAL:
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in XMM0
 					assembler.emitcode("call prtdbl")
 				else: # pragma: no cover
@@ -580,9 +582,9 @@ class AST():
 				if not (reg is None):
 					found_symbol = True
 					self.children[0].assemble(assembler, procFuncHeadingScope)
-					if self.children[0].expressiontype == TOKEN_INT:
+					if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
 						assembler.emitcode("MOV " + reg + ", RAX")
-					elif self.children[0].expressiontype == TOKEN_REAL:
+					elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
 						assembler.emitcode("MOVSD " + reg + ", XMM0")
 					else: # pragma: no cover
 						raise ValueError("Invalid expressiontype")
@@ -592,9 +594,9 @@ class AST():
 						if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
 							found_symbol = True
 							self.children[0].assemble(assembler, procFuncHeadingScope)
-							if self.children[0].expressiontype == TOKEN_INT:
+							if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
 								assembler.emitcode("MOV " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", RAX")
-							elif self.children[0].expressiontype == TOKEN_REAL:
+							elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
 								assembler.emitcode("MOVSD " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", XMM0")
 							else: # pragma: no cover
 								raise ValueError("Invalid expressiontype")
@@ -678,10 +680,10 @@ class AST():
 					realparams = 0
 					while i < len(self.children):
 						self.children[i].assemble(assembler, procFuncHeadingScope)
-						if self.children[i].expressiontype == TOKEN_INT:
+						if self.children[i].expressiontype == EXPRESSIONTYPE_INT:
 							intparams += 1
 							assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
-						elif self.children[i].expressiontype == TOKEN_REAL:
+						elif self.children[i].expressiontype == EXPRESSIONTYPE_REAL:
 							realparams += 1
 							# If a function takes more than one Real parameter, the first parameter will be overwritten with the value of the last.
 							# unless we do this.  Reason: all floating point calculations put their result into XMM0.  First parameter to function
@@ -999,9 +1001,9 @@ class Parser:
 				factor.value = factor.value * multby
 				ret = AST(factor)
 				if isinstance(factor.value, int):
-					ret.expressiontype = TOKEN_INT
+					ret.expressiontype = EXPRESSIONTYPE_INT
 				else:
-					ret.expressiontype = TOKEN_REAL
+					ret.expressiontype = EXPRESSIONTYPE_REAL
 
 		return ret
 
@@ -1277,7 +1279,7 @@ class Parser:
 		self.AST.find_string_literals(self.assembler)
 		self.AST.find_real_literals(self.assembler)
 		self.AST.find_variable_declarations(self.assembler)
-		self.AST.process_numeric_types(self.assembler)
+		self.AST.static_type_check(self.assembler)
 
 
 		self.assembler.setup_bss()

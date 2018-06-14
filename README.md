@@ -25,7 +25,7 @@ Text in /* */ is a comment
 <function declaration> ::= <function heading> ";" <function body>
 <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
 <function body> ::= [<variable declaration part>] <statement part>
-<formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 parameters max at this time */
+<formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 <statement part> ::= "begin" <statement sequence> "end"
 <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
 <statement sequence> ::= <statement> {";" <statement>}
@@ -86,17 +86,17 @@ Running ```compiler_test.py```, with all debug and error condition code excluded
 
 Code coverage:
     
-    ```asm_funcs.py: 92%```
+    asm_funcs.py: 92%
     
-    ```compiler.py: 97%```
+    compiler.py: 97%
     
-    All the code missed is expected
+All the code missed is expected
     
 Branch coverage:
 
-    ```asm_funcs.py: 87%```
+    asm_funcs.py: 87%
     
-    ```compiler.py: 95%```
+    compiler.py: 95%
 
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.
