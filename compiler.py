@@ -662,15 +662,15 @@ class AST():
 				elif symbol.type == asm_funcs.SYMBOL_REAL:
 					assembler.emitcode("MOVSD XMM0, [" + symbol.label + "]")
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
-					# call the function - return value is in RAX
-					# current limitation - 6 parameters max - to fix this, we just need to use relative
+					# call the function - return value is in RAX or XMM0
+					# current limitation - 6 int + 8 real parameters max - to increase this later, we just need to use relative
 					# stack pointer address in the local symbol table to store where the others are.
 					# the parameters will be the children in the AST
-					# push the rdi, rsi, rdx, rcx, r8, and r9 registers onto the stack (or the ones we need)
-					# put the parameters into those registers
+					# any register (except XMM0) used to pass a parameter gets pushed onto the stack
+					# put the parameters into those registers, with special handling for XMM0
 					# call the function
-					# rax has the return
-					# pop all the registers back
+					# rax or XMM0 has the return
+					# pop all the registers back except XMM0
 
 					assembler.preserve_xmm_registers_for_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
 					assembler.preserve_int_registers_for_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
