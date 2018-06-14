@@ -190,6 +190,11 @@ class ProcFuncHeading:
 			i += 1
 		return ret
 
+	def getParameterTypeByPos(self, pos):
+		if pos < 0 or pos >= len(self.parameters): # pragma: no cover
+			raise ValueError("Invlalid parameter number: " + str(pos))
+		return self.parameters[pos].type
+
 class AST():
 	def __init__(self, token, comment = None):
 		self.token = token
@@ -334,7 +339,7 @@ class AST():
 	def assembleProcsAndFunctions(self, assembler):
 		if self.token.type == TOKEN_FUNCTION:
 			# first six integer arguments are passed in RDI, RSI, RDX, RCX, R8, and R9 in that order
-			# first eight real arguments are passed in XMMO..XMM7
+			# first eight real arguments are passed in XMM0..XMM7
 			# integer return values are passed in RAX
 			# real return values are passed in XMM0
 			functionsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
@@ -679,12 +684,17 @@ class AST():
 					intparams = 0
 					realparams = 0
 					while i < len(self.children):
+						paramtype = symbol.procfuncheading.getParameterTypeByPos(i)
 						self.children[i].assemble(assembler, procFuncHeadingScope)
-						if self.children[i].expressiontype == EXPRESSIONTYPE_INT:
-							intparams += 1
+						if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
+							intparams +=1
+							if self.children[i].expressiontype == EXPRESSIONTYPE_REAL: # pragma: no cover
+								raise ValueError("Cannot pass real into integer-typed parameter.")
 							assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
-						elif self.children[i].expressiontype == EXPRESSIONTYPE_REAL:
-							realparams += 1
+						elif paramtype == TOKEN_VARIABLE_TYPE_REAL:
+							realparams +=1
+							if self.children[i].expressiontype == EXPRESSIONTYPE_INT:
+								assembler.emitcode("CVTSI2SD XMM0, RAX")
 							# If a function takes more than one Real parameter, the first parameter will be overwritten with the value of the last.
 							# unless we do this.  Reason: all floating point calculations put their result into XMM0.  First parameter to function
 							# gets its value put in XMM0, then when system goes to calculate the second Real parameter, it first stores the
@@ -695,7 +705,6 @@ class AST():
 								assembler.emitpushxmmreg("XMM0")
 							else:
 								assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
-
 						else: # pragma: no cover
 							raise ValueError("Invalid expressiontype")
 						i += 1

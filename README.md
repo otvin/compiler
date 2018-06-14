@@ -86,17 +86,17 @@ Running ```compiler_test.py```, with all debug and error condition code excluded
 
 Code coverage:
     
-    asm_funcs.py: 92%
+    asm_funcs.py: 99%
     
-    compiler.py: 97%
+    compiler.py: 98%
     
 All the code missed is expected
     
 Branch coverage:
 
-    asm_funcs.py: 87%
+    asm_funcs.py: 96%
     
-    compiler.py: 95%
+    compiler.py: 96%
 
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.
