@@ -101,6 +101,7 @@ def main():
 	f = dotest("compiler_test_files/test20f.pas", "compiler_test_files/test20f.out")
 	f = dotest("compiler_test_files/test20g.pas", "compiler_test_files/test20g.out")
 	f = dotest("compiler_test_files/test20h.pas", "compiler_test_files/test20h.out")
+	f = dotest("compiler_test_files/test20i.pas", "compiler_test_files/test20i.out")
 	print ("Tests Attempted: " + str(NUM_ATTEMPTS))
 	print ("Tests Succeeded: " + str(NUM_SUCCESSES))
 

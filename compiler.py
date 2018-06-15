@@ -417,21 +417,41 @@ class AST():
 			for child in self.children:
 				child.assembleProcsAndFunctions(assembler)
 
+	def assembleTwoChildrenForMathEvaluation(self, assembler, procFuncHeadingScope):
+		# used for math and relational operators
+		# for integer operations, the first child is in RAX and the second child is in RCX
+		# for floating point operations, the first child is in XMM0 and the second child is in XMM8
+		if self.expressiontype == EXPRESSIONTYPE_INT:
+			# all children must be ints
+			self.children[0].assemble(assembler, procFuncHeadingScope)
+			# RAX now contains value of the first child
+			assembler.emitcode("PUSH RAX")
+			self.children[1].assemble(assembler, procFuncHeadingScope)
+			# RAX now contains value of the second child
+			assembler.emitcode("POP RCX")
+		elif self.expressiontype == EXPRESSIONTYPE_REAL:
+			# integer children will be in RAX and have to be moved to XMM0
+			# real children will already be in XMM0
+			self.children[0].assemble(assembler, procFuncHeadingScope)
+			if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
+				assembler.emitcode("CVTSI2SD XMM0, RAX")
+			assembler.emitpushxmmreg("XMM0")
+			self.children[1].assemble(assembler, procFuncHeadingScope)
+			if self.children[1].expressiontype == EXPRESSIONTYPE_INT:
+				assembler.emitcode("CVTSI2SD XMM0, RAX")
+			assembler.emitpopxmmreg("XMM8")
+		else:  # pragma: no cover
+			raise valueError ("Invalid ExpressionType")
+
+
 	def assemble(self, assembler, procFuncHeadingScope):
 		if self.token.type == TOKEN_INT:
 			assembler.emitcode("MOV RAX, " + str(self.token.value))
 		elif self.token.type == TOKEN_REAL:
 			assembler.emitcode("MOVSD XMM0, [" + assembler.real_literals[self.token.value] + "]")
 		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT, TOKEN_DIV]:
+			self.assembleTwoChildrenForMathEvaluation(assembler, procFuncHeadingScope)
 			if self.expressiontype == EXPRESSIONTYPE_INT:
-				# all children must be ints
-				self.children[0].assemble(assembler, procFuncHeadingScope)
-				# RAX now contains value of the first child
-				assembler.emitcode("PUSH RAX")
-				self.children[1].assemble(assembler, procFuncHeadingScope)
-				# RAX now contains value of the second child
-				assembler.emitcode("POP RCX")
-				# RCX now contains value of the first child
 				if self.token.type == TOKEN_PLUS:
 					assembler.emitcode("ADD RAX, RCX")
 				elif self.token.type == TOKEN_MINUS:
@@ -442,16 +462,6 @@ class AST():
 				else: # pragma: no cover
 					raise ValueError ("Floating point division has integer type - error")
 			else:
-				# integer children will be in RAX and have to be moved to XMM0
-				# real children will already be in XMM0
-				self.children[0].assemble(assembler, procFuncHeadingScope)
-				if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
-					assembler.emitcode("CVTSI2SD XMM0, RAX")
-				assembler.emitpushxmmreg("XMM0")
-				self.children[1].assemble(assembler, procFuncHeadingScope)
-				if self.children[1].expressiontype == EXPRESSIONTYPE_INT:
-					assembler.emitcode("CVTSI2SD XMM0, RAX")
-				assembler.emitpopxmmreg("XMM8")
 				if self.token.type == TOKEN_PLUS:
 					assembler.emitcode("ADDSD XMM0, XMM8")
 				elif self.token.type == TOKEN_MINUS:
@@ -473,34 +483,51 @@ class AST():
 			assembler.emitcode("CQO") #extend RAX into RDX to handle idiv by negative numbers
 			assembler.emitcode("IDIV RCX")
 		elif self.token.isRelOp():
-			if self.token.type == TOKEN_RELOP_EQUALS:
-				jumpinstr = "JE"
-			elif self.token.type == TOKEN_RELOP_NOTEQ:
-				jumpinstr = "JNE"
-			elif self.token.type == TOKEN_RELOP_GREATER:
-				jumpinstr = "JG"
-			elif self.token.type == TOKEN_RELOP_GREATEREQ:
-				jumpinstr = "JGE"
-			elif self.token.type == TOKEN_RELOP_LESS:
-				jumpinstr = "JL"
-			elif self.token.type == TOKEN_RELOP_LESSEQ:
-				jumpinstr = "JLE"
-			else: # pragma: no cover
-				raise ValueError ("Invalid Relational Operator : " + DEBUG_TOKENDISPLAY(self.token.type))
 
-			self.children[0].assemble(assembler, procFuncHeadingScope)
-			assembler.emitcode("PUSH RAX")
-			self.children[1].assemble(assembler, procFuncHeadingScope)
-			assembler.emitcode("POP RCX")
-			assembler.emitcode("CMP RCX, RAX")
-			# tried using CMOVE/CMOVNE but NASM didn't like them
+			self.assembleTwoChildrenForMathEvaluation(assembler, procFuncHeadingScope)
+
+			if self.expressiontype == EXPRESSIONTYPE_INT:
+				assembler.emitcode("CMP RCX, RAX")
+				if self.token.type == TOKEN_RELOP_EQUALS:
+					jumpinstr = "JE"
+				elif self.token.type == TOKEN_RELOP_NOTEQ:
+					jumpinstr = "JNE"
+				elif self.token.type == TOKEN_RELOP_GREATER:
+					jumpinstr = "JG"
+				elif self.token.type == TOKEN_RELOP_GREATEREQ:
+					jumpinstr = "JGE"
+				elif self.token.type == TOKEN_RELOP_LESS:
+					jumpinstr = "JL"
+				elif self.token.type == TOKEN_RELOP_LESSEQ:
+					jumpinstr = "JLE"
+				else: # pragma: no cover
+					raise ValueError ("Invalid Relational Operator : " + DEBUG_TOKENDISPLAY(self.token.type))
+
+			elif self.expressiontype == EXPRESSIONTYPE_REAL:
+				assembler.emitcode("UCOMISD XMM8, XMM0")
+				if self.token.type == TOKEN_RELOP_EQUALS:
+					jumpinstr = "JE"
+				elif self.token.type == TOKEN_RELOP_NOTEQ:
+					jumpinstr = "JNE"
+				elif self.token.type == TOKEN_RELOP_GREATER:
+					jumpinstr = "JA"
+				elif self.token.type == TOKEN_RELOP_GREATEREQ:
+					jumpinstr = "JAE"
+				elif self.token.type == TOKEN_RELOP_LESS:
+					jumpinstr = "JB"
+				elif self.token.type == TOKEN_RELOP_LESSEQ:
+					jumpinstr = "JBE"
+				else: # pragma: no cover
+					raise ValueError ("Invalid Relational Operator : " + DEBUG_TOKENDISPLAY(self.token.type))
+
+
 			labeltrue = assembler.generate_local_label()
 			labeldone = assembler.generate_local_label()
 			assembler.emitcode(jumpinstr + " " + labeltrue)
 			assembler.emitcode("MOV RAX, 0")
 			assembler.emitcode("JMP " + labeldone)
 			assembler.emitlabel(labeltrue)
-			assembler.emitcode("MOV RAX, -1")
+			assembler.emitcode("MOV RAX, -1")  # we may need to move to using 1 for True per the x86-64 manuals
 			assembler.emitlabel(labeldone)
 		elif self.token.type == TOKEN_IF:
 			label = assembler.generate_local_label()
@@ -834,6 +861,22 @@ class Tokenizer:
 		else: # pragma: no cover
 			self.raiseTokenizeError("Symbol Expected")
 
+	def eatComments(self):
+		while self.peek() == "{":
+			while self.peek() != "}":
+				if self.peek() == "\n":
+					self.line_number += 1
+					self.line_position += 1
+				self.eat()
+			self.eat()  # eat the "}"
+			# get rid of any white space that follows comments
+			while self.peek().isspace():
+				if self.peek() == "\n":
+					self.line_number += 1
+					self.line_position = 1
+				self.eat()
+
+
 	def getNextToken(self, requiredtokentype=None):
 		# if the next Token must be of a certain type, passing that type in
 		# will lead to validation.
@@ -844,20 +887,6 @@ class Tokenizer:
 				errstr = "Expected " + DEBUG_TOKENDISPLAY(requiredtokentype) # pragma: no cover
 			self.raiseTokenizeError("Unexpected end of input. " + errstr) # pragma: no cover
 		else:
-			# get rid of comments
-			while self.peek() == "{":
-				while self.peek() != "}":
-					if self.peek() == "\n":
-						self.line_number += 1
-						self.line_position += 1
-					self.eat()
-				self.eat() # eat the "}"
-				# get rid of any white space that follows comments
-				while self.peek().isspace():
-					if self.peek() == "\n":
-						self.line_number += 1
-						self.line_position = 1
-					self.eat()
 
 			if self.peek().isalpha():
 				ident = self.getIdentifier().lower()
@@ -954,6 +983,8 @@ class Tokenizer:
 			if not (requiredtokentype is None):
 				if ret.type != requiredtokentype: # pragma: no cover
 					self.raiseTokenizeError("Expected " + DEBUG_TOKENDISPLAY(requiredtokentype) + ", got " + DEBUG_TOKENDISPLAY(ret.type))
+
+			self.eatComments()
 
 			return ret
 
@@ -1139,10 +1170,6 @@ class Parser:
 		# <statement sequence> ::= <statement> | <statement> ';' <statement sequence>
 		ret = AST(self.tokenizer.getNextToken(TOKEN_BEGIN))
 
-		#while not self.tokenizer.peekMatchStringAndSpace("end"):
-		#	ret.children.append(self.parseStatement)
-		#	# if it is a semicolon, great.  If it is
-
 		statement = self.parseStatement()
 		ret.children.append(statement)
 		while self.tokenizer.peek() == ";":
@@ -1246,6 +1273,10 @@ class Parser:
 	def parseProgram(self):
 		# program ::= <program heading> <block> "."
 		# program heading ::= "program" <identifier> ";"
+
+		# eat any leading comments
+		self.tokenizer.eatComments()
+
 		ret = AST(self.tokenizer.getNextToken(TOKEN_PROGRAM))
 		ret.token.value = self.tokenizer.getIdentifier()
 		semi = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
