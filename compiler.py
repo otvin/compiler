@@ -92,7 +92,7 @@ def isSymbol(char):
 # <function declaration> ::= <function heading> ";" <function body>
 # <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
 # <function body> ::= [<variable declaration part>] <statement part>
-# <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
+# <formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 # <statement part> ::= "begin" <statement sequence> "end"
 # <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
 # <statement sequence> ::= <statement> | <statement> ';' <statement sequence>
@@ -136,9 +136,10 @@ class Token:
 		return (DEBUG_TOKENDISPLAY(self.type) + ":" + str(self.value))
 
 class ProcFuncParameter:
-	def __init__(self, name, type):
+	def __init__(self, name, type, byref):
 		self.name = name
 		self.type = type  # will be a token variable type e.g. TOKEN_VARIABLE_TYPE_INTEGER
+		self.byref = byref # will be a boolean
 
 class ProcFuncHeading:
 	def __init__(self, name):
@@ -166,7 +167,8 @@ class ProcFuncHeading:
 		realargs = 0
 		i = 0
 		while i < len(self.parameters):
-			if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER:
+			if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER or self.parameters[i].byref == True:
+				# byref parameters are passed as integers
 				intargs += 1
 			elif self.parameters[i].type == TOKEN_VARIABLE_TYPE_REAL:
 				realargs += 1
@@ -187,13 +189,16 @@ class ProcFuncHeading:
 		while i < len(self.parameters):
 			if self.parameters[i].type == type:
 				ret += 1
+			elif self.parameters[i].type != TOKEN_VARIABLE_TYPE_INTEGER and type == TOKEN_VARIABLE_TYPE_INTEGER and self.parameters[i].byref == True:
+				# byref parameters count as integer type
+				ret += 1
 			i += 1
 		return ret
 
-	def getParameterTypeByPos(self, pos):
+	def getParameterByPos(self, pos):
 		if pos < 0 or pos >= len(self.parameters): # pragma: no cover
 			raise ValueError("Invlalid parameter number: " + str(pos))
-		return self.parameters[pos].type
+		return self.parameters[pos]
 
 class AST():
 	def __init__(self, token, comment = None):
@@ -666,7 +671,6 @@ class AST():
 					if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
 						found_symbol = True
 						symbol = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value)
-						# ugly - the sumboltype.get
 						if symbol.type == asm_funcs.SYMBOL_INTEGER:
 							assembler.emitcode("MOV RAX, " + symbol.label)
 						elif symbol.type == asm_funcs.SYMBOL_REAL:
@@ -711,29 +715,33 @@ class AST():
 					intparams = 0
 					realparams = 0
 					while i < len(self.children):
-						paramtype = symbol.procfuncheading.getParameterTypeByPos(i)
-						self.children[i].assemble(assembler, procFuncHeadingScope)
-						if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
-							intparams +=1
-							if self.children[i].expressiontype == EXPRESSIONTYPE_REAL: # pragma: no cover
-								raise ValueError("Cannot pass real into integer-typed parameter.")
-							assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
-						elif paramtype == TOKEN_VARIABLE_TYPE_REAL:
-							realparams +=1
-							if self.children[i].expressiontype == EXPRESSIONTYPE_INT:
-								assembler.emitcode("CVTSI2SD XMM0, RAX")
-							# If a function takes more than one Real parameter, the first parameter will be overwritten with the value of the last.
-							# unless we do this.  Reason: all floating point calculations put their result into XMM0.  First parameter to function
-							# gets its value put in XMM0, then when system goes to calculate the second Real parameter, it first stores the
-							# value in XMM0 (when it is evaluated) and then pushes it to XMM1 since XMM1 holds the second parameter.
-							# Fix is to calculate the first parameter, stash it, then grab it back.
-							if realparams == 1:
-								# XMM0 contains the value after the self.children[i].assemble() from above
-								assembler.emitpushxmmreg("XMM0")
-							else:
-								assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
-						else: # pragma: no cover
-							raise ValueError("Invalid expressiontype")
+						curparam = symbol.procfuncheading.getParameterByPos(i)
+						if curparam.byref == False:
+							paramtype = curparam.type
+							self.children[i].assemble(assembler, procFuncHeadingScope)
+							if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
+								intparams +=1
+								if self.children[i].expressiontype == EXPRESSIONTYPE_REAL: # pragma: no cover
+									raise ValueError("Cannot pass real into integer-typed parameter.")
+								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
+							elif paramtype == TOKEN_VARIABLE_TYPE_REAL:
+								realparams +=1
+								if self.children[i].expressiontype == EXPRESSIONTYPE_INT:
+									assembler.emitcode("CVTSI2SD XMM0, RAX")
+								# If a function takes more than one Real parameter, the first parameter will be overwritten with the value of the last.
+								# unless we do this.  Reason: all floating point calculations put their result into XMM0.  First parameter to function
+								# gets its value put in XMM0, then when system goes to calculate the second Real parameter, it first stores the
+								# value in XMM0 (when it is evaluated) and then pushes it to XMM1 since XMM1 holds the second parameter.
+								# Fix is to calculate the first parameter, stash it, then grab it back.
+								if realparams == 1:
+									# XMM0 contains the value after the self.children[i].assemble() from above
+									assembler.emitpushxmmreg("XMM0")
+								else:
+									assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
+							else: # pragma: no cover
+								raise ValueError("Invalid expressiontype")
+						else:
+							pass
 						i += 1
 
 					if realparams > 0:
@@ -1216,20 +1224,24 @@ class Parser:
 		return ret
 
 	def parseFunctionParameter(self):
-		# formal parameter list ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
+		# <formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 
+		if self.tokenizer.peekMatchStringAndSpace("var"):
+			byref = True
+		else:
+			byref = False
 		paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER).value
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		paramtypetoken = self.tokenizer.getNextToken()
 		if not paramtypetoken.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]: # pragma: no cover
 			self.raiseParseError("Expected Integer or Real Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtype.type))
-		return ProcFuncParameter(paramname, paramtypetoken.type)
+		return ProcFuncParameter(paramname, paramtypetoken.type, byref)
 
 	def parseFunctionDeclaration(self):
 		# <function declaration> ::= <function heading> ";" <function body>
 		# <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
 		# <function body> ::= [<variable declaration part>] <statement part>
-		# <formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    # Fred note - we are only allowing 6 parameters max at this time
+		# <formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 
 		functoken = self.tokenizer.getNextToken(TOKEN_FUNCTION)
 		funcheading = ProcFuncHeading(self.tokenizer.getIdentifier().lower())
