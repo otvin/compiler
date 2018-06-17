@@ -349,6 +349,7 @@ class AST():
 			# real return values are passed in XMM0
 			functionsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
 			assembler.emitlabel(functionsymbol.label, "function: " + self.procFuncHeading.name)
+
 			# allocate space for local variables
 			# Also - if we referenced a parameter in the function as a parameter to another function,
 			# that parameter could get clobbered if we did not copy it to the stack.  Example:
@@ -375,9 +376,16 @@ class AST():
 				if i.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 					localvarbytesneeded += 8
 					if i.type == TOKEN_VARIABLE_TYPE_INTEGER:
-						symboltype = asm_funcs.SYMBOL_INTEGER
+						if i.byref:
+							symboltype = asm_funcs.SYMBOL_INTEGER_PTR
+						else:
+							symboltype = asm_funcs.SYMBOL_INTEGER
 					else:
-						symboltype = asm_funcs.SYMBOL_REAL
+						if i.byref:
+							symboltype = asm_funcs.SYMBOL_REAL_PTR
+						else:
+							symboltype = asm_funcs.SYMBOL_REAL
+
 					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, 'QWORD [RBP-' + str(localvarbytesneeded) + ']')
 
 				else: # pragma: no cover
@@ -615,28 +623,17 @@ class AST():
 			assembler.emitcomment(self.comment)
 			found_symbol = False
 			if not (procFuncHeadingScope is None):
-				reg = procFuncHeadingScope.getRegisterForParameterName(self.token.value)
-				if not (reg is None):
-					found_symbol = True
-					self.children[0].assemble(assembler, procFuncHeadingScope)
-					if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
-						assembler.emitcode("MOV " + reg + ", RAX")
-					elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
-						assembler.emitcode("MOVSD " + reg + ", XMM0")
-					else: # pragma: no cover
-						raise ValueError("Invalid expressiontype")
-				else:
-					# If this is a local variable in a function/proc we refer to it via the offset from RBP
-					if not (procFuncHeadingScope.localvariableSymbolTable is None):
-						if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
-							found_symbol = True
-							self.children[0].assemble(assembler, procFuncHeadingScope)
-							if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
-								assembler.emitcode("MOV " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", RAX")
-							elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
-								assembler.emitcode("MOVSD " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", XMM0")
-							else: # pragma: no cover
-								raise ValueError("Invalid expressiontype")
+				# If this is a param or local variable in a function/proc we refer to it via the offset from RBP
+				if not (procFuncHeadingScope.localvariableSymbolTable is None):
+					if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
+						found_symbol = True
+						self.children[0].assemble(assembler, procFuncHeadingScope)
+						if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
+							assembler.emitcode("MOV " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", RAX")
+						elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
+							assembler.emitcode("MOVSD " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", XMM0")
+						else: # pragma: no cover
+							raise ValueError("Invalid expressiontype")
 			if found_symbol == False:
 				symbol = assembler.variable_symbol_table.get(self.token.value)
 				if symbol.type == asm_funcs.SYMBOL_INTEGER:
@@ -1227,6 +1224,7 @@ class Parser:
 		# <formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 
 		if self.tokenizer.peekMatchStringAndSpace("var"):
+			vartoken = self.tokenizer.getNextToken(TOKEN_VAR)
 			byref = True
 		else:
 			byref = False
