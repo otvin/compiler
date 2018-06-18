@@ -776,20 +776,21 @@ class AST():
 							#	the child's assemble will dereference the pointer if the child originally was passed
 							#	in byRef
 							found_symbol = False
-							if not (procFuncHeadingScope.localvariableSymbolTable is None):
-								if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
-									found_symbol = True
-									childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
-									if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL]:
-										# stab in the dark
-										assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-									elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR]:
-										assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-									else: # pragma: no cover
-										raise ValueError("Invalid symboltype")
+							if not (procFuncHeadingScope is None):
+								if not (procFuncHeadingScope.localvariableSymbolTable is None):
+									if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
+										found_symbol = True
+										childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
+										if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL]:
+											# stab in the dark
+											assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+										elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR]:
+											assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+										else: # pragma: no cover
+											raise ValueError("Invalid symboltype")
 							if not found_symbol:
 								# must be a global variable
-								childsymbol = assembler.variable_symbol_table.get(childoken.value)
+								childsymbol = assembler.variable_symbol_table.get(childtoken.value)
 								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
 
 						i += 1
