@@ -67,6 +67,12 @@ class SymbolData:
 		self.label = label
 		self.procfuncheading = procFuncHeading
 
+	def isPointer(self):
+		if self.type in [SYMBOL_INTEGER_PTR, SYMBOL_REAL_PTR]:
+			return True
+		else:
+			return False
+
 class SymbolTable:
 	def __init__ (self):
 		self.symbols = {}
@@ -80,7 +86,7 @@ class SymbolTable:
 	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
 		if self.exists(symbolname): # pragma: no cover
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
-		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_REAL, SYMBOL_INTEGER]: # pragma: no cover
+		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_REAL, SYMBOL_INTEGER, SYMBOL_REAL_PTR, SYMBOL_INTEGER_PTR]: # pragma: no cover
 			raise ValueError ("Invalid symbol type")
 		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
 

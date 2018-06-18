@@ -626,14 +626,24 @@ class AST():
 				# If this is a param or local variable in a function/proc we refer to it via the offset from RBP
 				if not (procFuncHeadingScope.localvariableSymbolTable is None):
 					if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
+						symbol = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value)
 						found_symbol = True
 						self.children[0].assemble(assembler, procFuncHeadingScope)
-						if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
-							assembler.emitcode("MOV " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", RAX")
-						elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
-							assembler.emitcode("MOVSD " + procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label + ", XMM0")
-						else: # pragma: no cover
-							raise ValueError("Invalid expressiontype")
+
+						if not symbol.isPointer():
+							if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
+								assembler.emitcode("MOV " + symbol.label + ", RAX")
+							elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
+								assembler.emitcode("MOVSD " + symbol.label + ", XMM0")
+							else: # pragma: no cover
+								raise ValueError("Invalid expressiontype")
+						else:
+							if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
+								assembler.emitcode("MOV R11, " + symbol.label)
+								assembler.emitcode("MOV [R11], RAX")
+							else:
+								assembler.emitcode("MOV R11, " + symbol.label)
+								assembler.emitcode("MOVDQU [R11], XMM0")
 			if found_symbol == False:
 				symbol = assembler.variable_symbol_table.get(self.token.value)
 				if symbol.type == asm_funcs.SYMBOL_INTEGER:
@@ -662,7 +672,7 @@ class AST():
 			if not (procFuncHeadingScope is None):
 				# Even though functions now copy their parameters to the stack, so there is no reason
 				# to check the parameter list, at some point we may optimize the code by only copying parameters
-				# to the stack if they are used in function invocations within the current function.
+				# to the stack if they are passed byRef or used in function invocations within the current function.
 				# So, I am leaving the parameter list check in this block.
 				if not (procFuncHeadingScope.localvariableSymbolTable is None):
 					if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
@@ -672,6 +682,12 @@ class AST():
 							assembler.emitcode("MOV RAX, " + symbol.label)
 						elif symbol.type == asm_funcs.SYMBOL_REAL:
 							assembler.emitcode("MOVSD XMM0, " + symbol.label)
+						elif symbol.type == asm_funcs.SYMBOL_INTEGER_PTR:
+							assembler.emitcode("MOV R11, " + symbol.label)
+							assembler.emitcode("MOV RAX, [R11]")
+						elif symbol.type == asm_funcs.SYMBOL_REAL_PTR:
+							assembler.emitcode("MOV R11, " + symbol.label)
+							assembler.emitcode("MOVDQU XMM0, [R11]")
 						else: # pragma: no cover
 							raise ValueError ("Invalid Symbol Type")
 				if found_symbol == False:
@@ -689,6 +705,7 @@ class AST():
 							raise ValueError("Invalid Parameter Type")
 
 			if found_symbol == False:
+				# Check to see if it is a global variable
 				symbol = assembler.variable_symbol_table.get(self.token.value)
 				if symbol.type == asm_funcs.SYMBOL_INTEGER:
 					assembler.emitcode("MOV RAX, [" + symbol.label + "]")
@@ -712,14 +729,20 @@ class AST():
 					intparams = 0
 					realparams = 0
 					while i < len(self.children):
+
 						curparam = symbol.procfuncheading.getParameterByPos(i)
-						if curparam.byref == False:
+						if not curparam.byref:
+							# If we are passing into a function a value that itself is a pointer, then we
+							#	need to dereference the pointer if it is being passed byval, or pass the pointer
+							#	itself if it's going byref.  That will be handled by the .assemble() function
+							#	for each child.
+
 							paramtype = curparam.type
 							self.children[i].assemble(assembler, procFuncHeadingScope)
 							if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
 								intparams +=1
 								if self.children[i].expressiontype == EXPRESSIONTYPE_REAL: # pragma: no cover
-									raise ValueError("Cannot pass real into integer-typed parameter.")
+									raise ValueError("Cannot pass real into integer-typed parameter in function " + symbol.procfuncheading.name + '()')
 								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
 							elif paramtype == TOKEN_VARIABLE_TYPE_REAL:
 								realparams +=1
@@ -738,7 +761,37 @@ class AST():
 							else: # pragma: no cover
 								raise ValueError("Invalid expressiontype")
 						else:
-							pass
+							# If we are passing into a function that itself is not a pointer, then we need
+							#	to pass its address if it is being passed byref, or a copy of the value if
+							#	is not.
+							curchild = self.children[i]
+							childtoken = curchild.token
+
+							if childtoken.type != TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:
+								raise ValueError("Variable identifier expected in function " + symbol.procfuncheading.name + '()')
+
+							intparams += 1 # all pointers are ints
+
+							# Instead of calling the child's assemble() function, we wil assemble it here, because
+							#	the child's assemble will dereference the pointer if the child originally was passed
+							#	in byRef
+							found_symbol = False
+							if not (procFuncHeadingScope.localvariableSymbolTable is None):
+								if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
+									found_symbol = True
+									childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
+									if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL]:
+										# stab in the dark
+										assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+									elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR]:
+										assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+									else: # pragma: no cover
+										raise ValueError("Invalid symboltype")
+							if not found_symbol:
+								# must be a global variable
+								childsymbol = assembler.variable_symbol_table.get(childoken.value)
+								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+
 						i += 1
 
 					if realparams > 0:
