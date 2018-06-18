@@ -167,7 +167,7 @@ class ProcFuncHeading:
 		realargs = 0
 		i = 0
 		while i < len(self.parameters):
-			if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER or self.parameters[i].byref == True:
+			if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER or self.parameters[i].byref:
 				# byref parameters are passed as integers
 				intargs += 1
 			elif self.parameters[i].type == TOKEN_VARIABLE_TYPE_REAL:
@@ -176,7 +176,7 @@ class ProcFuncHeading:
 				raise ValueError("Invalid parameter type: " + DEBUG_TOKENDISPLAY(self.parameters[i].type))
 
 			if self.parameters[i].name == paramName:
-				if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER:
+				if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER or self.parameters[i].byref:
 					ret = asm_funcs.intParameterPositionToRegister(intargs)
 				else:
 					ret = asm_funcs.realParameterPositionToRegister(realargs)
@@ -409,7 +409,7 @@ class AST():
 				for i in self.procFuncHeading.parameters:
 					paramlabel = self.procFuncHeading.localvariableSymbolTable.get(i.name).label
 					register = self.procFuncHeading.getRegisterForParameterName(i.name)
-					if i.type == TOKEN_VARIABLE_TYPE_INTEGER:
+					if i.type == TOKEN_VARIABLE_TYPE_INTEGER or i.byref:
 						assembler.emitcode("MOV " + paramlabel + ', ' + register, 'param: ' + i.name)
 					else:
 						assembler.emitcode("MOVSD " + paramlabel + ', ' + register, 'param: ' + i.name)

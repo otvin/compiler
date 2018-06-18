@@ -80,6 +80,17 @@ Comments between the ```program``` keyword and a ```function``` keyword when the
 
 If a function takes a Real parameter, and an expression of type Integer is passed in, the Integer will not be converted to Real.  Workaround: multiply by 1.0 to convert to Real.
 
+Static Type Checking does not compare the return type of a function to the value it is assigned.  So, this will compile, and then generate junk output:
+
+```
+function oops(x:real):Integer;
+var y:real;
+begin
+     y = x * x;
+     oops := y;
+end;     
+```
+
 ### Code Coverage:
 
 Running ```compiler_test.py```, with all debug and error condition code excluded via ```# pragma: no cover```
