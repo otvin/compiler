@@ -120,7 +120,7 @@ def isSymbol(char):
 # <addition operator> ::= "+" | "-"
 # <multiplication operator> ::= "*" | "/", "DIV"
 # <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
-
+ 
 class Token:
 	def __init__(self, type, value):
 		self.type = type
