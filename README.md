@@ -76,6 +76,8 @@ Execute ```python3 compiler_test.py```
 
 ### Known bugs:
 
+If a function takes a byRef integer and real parameters, and it is invoked from another function (not main) and the real parameter is updated, then the integer paramter value is wiped out.  See: ```compiler_test_files/known_bug1.pas```.  It should display 8 then 5, and actually displays 8 then 0.
+
 
 ### Code Coverage:
 
@@ -93,7 +95,7 @@ Branch coverage:
 
     asm_funcs.py: 97%
     
-    compiler.py: 96%
+    compiler.py: 97%
 
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.
