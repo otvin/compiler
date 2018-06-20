@@ -147,7 +147,7 @@ class ProcFuncHeading:
 		self.parameters = []  # will be a list of ProcFuncParameters
 		self.localvariableAST = None
 		self.localvariableSymbolTable = None
-		self.returnAddress = None  # will be a string with an address offset, typically "QWORD [RBP-8]"
+		self.returnAddress = None  # will be a string with an address offset, typically "[RBP-8]"
 		self.returntype = None  # will be a token variable type e.g. TOKEN_VARIABLE_TYPE_INTEGER
 
 	def getParameterPos(self, paramName):
@@ -291,9 +291,25 @@ class AST():
 						if param.type == TOKEN_VARIABLE_TYPE_INTEGER:
 							self.expressiontype = EXPRESSIONTYPE_INT
 							foundit = True
+							break
 						elif param.type == TOKEN_VARIABLE_TYPE_REAL:
 							self.expressiontype = EXPRESSIONTYPE_REAL
 							foundit = True
+							break
+			if not foundit:
+				if not parentProcFuncHeading is None:
+					if self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
+						if self.token.value == parentProcFuncHeading.name:
+							foundit = True
+							if parentProcFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+								self.expressiontype = EXPRESSIONTYPE_INT
+								for child in self.children:
+									if child.expressiontype == EXPRESSIONTYPE_REAL: # pragma: no cover
+										raise ValueError("Cannot assign real value as return type to function " + parentProcFuncHeading.name)
+							elif parentProcFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_REAL:
+								self.expressiontype = EXPRESSIONTYPE_REAL
+							else: # pragma: no cover
+								raise ValueError("Invalid return type from function + " + parentProcFuncHeading.name)
 
 			if foundit == False:
 				if not parentProcFuncHeading is None:
@@ -311,11 +327,6 @@ class AST():
 
 			if foundit == False:
 				myvar = None
-				if not parentProcFuncHeading is None:
-					if not parentProcFuncHeading.localvariableSymbolTable is None:
-						if parentProcFuncHeading.localvariableSymbolTable.exists(self.token.value):
-							myvar = parentProcFuncHeading.localvariableSymbolTable.get(self.token.value)
-
 				if myvar is None:
 					myvar = assembler.variable_symbol_table.get(self.token.value)
 				if myvar.type == asm_funcs.SYMBOL_INTEGER:
@@ -336,8 +347,8 @@ class AST():
 				raise ValueError ("Invalid type right of relational op")
 			if self.children[0].expressiontype != self.children[1].expressiontype: # pragma: no cover
 				errstr = "Left of " + DEBUG_TOKENDISPLAY(self.token.type) + " type "
-				errstr += DEBUG_TOKENDISPLAY(self.children[0].expressiontype)
-				errstr += ", right has type " + DEBUG_TOKENDISPLAY(self.children[1].expressiontype)
+				errstr += self.children[0].expressiontype
+				errstr += ", right has type " + self.children[1].expressiontype
 				raise ValueError (errstr)
 			self.expressiontype = self.children[0].expressiontype
 
@@ -367,7 +378,7 @@ class AST():
 			localvarbytesneeded = 0
 			if self.procFuncHeading.returntype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 				localvarbytesneeded += 8
-				self.procFuncHeading.resultAddress = 'QWORD [RBP-' + str(localvarbytesneeded) + ']'
+				self.procFuncHeading.resultAddress = '[RBP-' + str(localvarbytesneeded) + ']'
 			else: # pragma: no cover
 				raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY(self.procFuncHeading.returntype.type))
 
@@ -386,7 +397,7 @@ class AST():
 						else:
 							symboltype = asm_funcs.SYMBOL_REAL
 
-					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, 'QWORD [RBP-' + str(localvarbytesneeded) + ']')
+					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, '[RBP-' + str(localvarbytesneeded) + ']')
 
 				else: # pragma: no cover
 					raise ValueError ("Invalid variable type : " + DEBUG_TOKENDISPLAY(i.type))
@@ -767,7 +778,7 @@ class AST():
 							curchild = self.children[i]
 							childtoken = curchild.token
 
-							if childtoken.type != TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:
+							if childtoken.type != TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION: # pragma: no cover
 								raise ValueError("Variable identifier expected in function " + symbol.procfuncheading.name + '()')
 
 							intparams += 1 # all pointers are ints
