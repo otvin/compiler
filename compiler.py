@@ -97,9 +97,10 @@ def isSymbol(char):
 # <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
 # <statement sequence> ::= <statement> | <statement> ';' <statement sequence>
 # <statement> ::= <simple statement> | <structured statement> | <empty statement>
-# <simple statement> ::= <assignment statement> | <print statement>   /* Fred note - print statement not in official BNF */
+# <simple statement> ::= <assignment statement> | <write statement>   /* Fred note - write statement not in official BNF */
 # <assignment statement> ::= <variable identifier> ":=" <simple expression>
-# <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
+# <write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
+# <write parameter> ::= <simple expression> | <string literal>
 # <structured statement> ::= <compound statement> | <while statement> | <if statement>
 # <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
 # <while statement> ::= "while" <expression> "do" <statement>
@@ -120,7 +121,7 @@ def isSymbol(char):
 # <addition operator> ::= "+" | "-"
 # <multiplication operator> ::= "*" | "/", "DIV"
 # <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
- 
+
 class Token:
 	def __init__(self, type, value):
 		self.type = type
@@ -1189,9 +1190,10 @@ class Parser:
 
 	def parseStatement(self):
 		# <statement> ::= <simple statement> | <structured statement> | <empty statement>
-		# <simple statement> ::= <assignment statement> | <print statement>   # Fred note - print statement not in official BNF
+		# <simple statement> ::= <assignment statement> | <write statement>   /* Fred note - write statement not in official BNF */
 		# <assignment statement> ::= <variable identifier> ":=" <simple expression>
-		# <print statement> ::= ("write" | "writeln") "(" (<simple expression> | <string literal>) ")"
+		# <write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
+		# <write parameter> ::= <simple expression> | <string literal>
 		# <structured statement> ::= <compound statement> | <while statement> | <if statement>
 		# <if statement> ::= if <expression> then <statement>
 		# <while statement> ::= "while" <expression> "do" <statement>
@@ -1209,15 +1211,21 @@ class Parser:
 			tok = self.tokenizer.getNextToken()
 
 			if tok.type == TOKEN_WRITELN or tok.type == TOKEN_WRITE:
+				ret = AST(tok)
 				lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
-				if self.tokenizer.peek() == "'":
-					tobeprinted = AST(self.tokenizer.getNextToken(TOKEN_STRING))
-				else:
-					tobeprinted = self.parseSimpleExpression()
+				done = False
+				while not done:
+					if self.tokenizer.peek() == "'":
+						tobeprinted = AST(self.tokenizer.getNextToken(TOKEN_STRING))
+					else:
+						tobeprinted = self.parseSimpleExpression()
+					ret.children.append(tobeprinted)
+					if self.tokenizer.peek() == ")":
+						done = True
+					else:
+						comma = self.tokenizer.getNextToken(TOKEN_COMMA)
 				rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 
-				ret = AST(tok)
-				ret.children.append(tobeprinted)
 			elif tok.type == TOKEN_VARIABLE_IDENTIFIER:
 				# we are assigning here
 				tok.type = TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT
