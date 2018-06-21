@@ -39,6 +39,7 @@ TOKEN_END = TokDef("END")
 TOKEN_VAR = TokDef("VAR")
 TOKEN_PROCFUNC_DECLARATION_PART = TokDef("{Procedures/Functions}")  # This is not a real token.  I need something ASTs can hold to signify the thing that holds procedures and functions
 TOKEN_FUNCTION = TokDef("FUNCTION")
+TOKEN_PROCEDURE = TokDef("PROCEDURE")
 
 TOKEN_WRITELN = TokDef("WRITELN")
 TOKEN_WRITE = TokDef("WRITE")
@@ -49,11 +50,12 @@ TOKEN_WHILE = TokDef("WHILE")
 TOKEN_DO = TokDef("DO")
 
 TOKEN_STRING = TokDef("String Literal")
-TOKEN_VARIABLE_IDENTIFIER = TokDef("VARIABLE")
+TOKEN_IDENTIFIER = TokDef("Undetermined Identifier")
 TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = TokDef("VARIABLE ASSIGNMENT")
 TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = TokDef("VARIABLE EVALUATION")
 TOKEN_VARIABLE_TYPE_INTEGER = TokDef("VARIABLE TYPE: Integer")
 TOKEN_VARIABLE_TYPE_REAL = TokDef("VARIABLE TYPE: Real")
+TOKEN_PROCEDURE_CALL = TokDef("Procedure Call")
 
 TOKEN_NOOP = TokDef("NO-OP")
 
@@ -88,10 +90,12 @@ def isSymbol(char):
 # <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
 # <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
 # <type> ::= "integer" | "real"
-# <procedure and function declaration part> ::= {<function declaration> ";"}
-# <function declaration> ::= <function heading> ";" <function body>
+# <procedure and function declaration part> ::= {(<procedure declaration> | <function declaration>) ";"}
+# <function declaration> ::= <function heading> ";" <procedure or function body>
+# <procedure declaration> ::= <procedure heading> ";" <procedure or function body>
 # <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
-# <function body> ::= [<variable declaration part>] <statement part>
+# <procedure heading> ::= "procedure" <identifier> [<formal parameter list>]
+# <procedure or function body> ::= [<variable declaration part>] <statement part>
 # <formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 # <statement part> ::= "begin" <statement sequence> "end"
 # <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
@@ -251,6 +255,11 @@ class AST():
 				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
 			else:
 				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_FUNCTION, assembler.generate_variable_name("func"), self.procFuncHeading)
+		elif self.token.type == TOKEN_PROCEDURE:
+			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist():  # pragma: no cover
+				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
+			else:
+				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_PROCEDURE, assembler.generate_variable_name("proc"), self.procFuncHeading)
 		else:
 			for child in self.children:
 				child.find_variable_declarations(assembler)
@@ -354,13 +363,19 @@ class AST():
 			self.expressiontype = self.children[0].expressiontype
 
 	def assembleProcsAndFunctions(self, assembler):
-		if self.token.type == TOKEN_FUNCTION:
+		if self.token.type in (TOKEN_FUNCTION, TOKEN_PROCEDURE):
 			# first six integer arguments are passed in RDI, RSI, RDX, RCX, R8, and R9 in that order
 			# first eight real arguments are passed in XMM0..XMM7
 			# integer return values are passed in RAX
 			# real return values are passed in XMM0
-			functionsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
-			assembler.emitlabel(functionsymbol.label, "function: " + self.procFuncHeading.name)
+
+			if self.token.type == TOKEN_FUNCTION:
+				s = "function"
+			else:
+				s = "procedure"
+
+			procfuncsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
+			assembler.emitlabel(procfuncsymbol.label, s + ": " + self.procFuncHeading.name)
 
 			# allocate space for local variables
 			# Also - if we referenced a parameter in the function as a parameter to another function,
@@ -377,11 +392,13 @@ class AST():
 			#   into another function.
 
 			localvarbytesneeded = 0
-			if self.procFuncHeading.returntype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
-				localvarbytesneeded += 8
-				self.procFuncHeading.resultAddress = '[RBP-' + str(localvarbytesneeded) + ']'
-			else: # pragma: no cover
-				raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY(self.procFuncHeading.returntype.type))
+
+			if self.token.type == TOKEN_FUNCTION:
+				if self.procFuncHeading.returntype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
+					localvarbytesneeded += 8
+					self.procFuncHeading.resultAddress = '[RBP-' + str(localvarbytesneeded) + ']'
+				else: # pragma: no cover
+					raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY(self.procFuncHeading.returntype.type))
 
 			self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
 			for i in self.procFuncHeading.parameters:
@@ -426,13 +443,14 @@ class AST():
 					else:
 						assembler.emitcode("MOVSD " + paramlabel + ', ' + register, 'param: ' + i.name)
 
-			self.children[0].assemble(assembler, functionsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
+			self.children[0].assemble(assembler, procfuncsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
 
-			# put the result in correct register
-			if self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
-				assembler.emitcode("MOV RAX, " + self.procFuncHeading.resultAddress)
-			else:
-				assembler.emitcode("MOVSD XMM0, " + self.procFuncHeading.resultAddress)
+			if self.token.type == TOKEN_FUNCTION:
+				# put the result in correct register
+				if self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+					assembler.emitcode("MOV RAX, " + self.procFuncHeading.resultAddress)
+				else:
+					assembler.emitcode("MOVSD XMM0, " + self.procFuncHeading.resultAddress)
 
 			if localvarbytesneeded > 0:
 				assembler.emitcode("MOV RSP, RBP", "restore stack pointer")
@@ -468,6 +486,96 @@ class AST():
 		else:  # pragma: no cover
 			raise valueError ("Invalid ExpressionType")
 
+	def assembleProcFuncInvocation(self, assembler, procFuncHeadingScope, symbol):
+		# only difference between procedures and functions at invocation is that the function assembly
+		# will set up the return values in RAX or XMM0.
+		# current limitation - 6 int + 8 real parameters max - to increase this later, we just need to use relative
+		# stack pointer address in the local symbol table to store where the others are.
+		# the parameters will be the children in the AST
+		# any register (except XMM0) used to pass a parameter gets pushed onto the stack
+		# put the parameters into those registers, with special handling for XMM0
+		# call the proc/function
+		# rax or XMM0 has the return
+		# pop all the registers back except XMM0
+
+		assembler.preserve_xmm_registers_for_procfunc_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
+		assembler.preserve_int_registers_for_procfunc_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
+
+		i = 0
+		intparams = 0
+		realparams = 0
+		while i < len(self.children):
+
+			curparam = symbol.procfuncheading.getParameterByPos(i)
+			if not curparam.byref:
+				# If we are passing into a proc/function a value that itself is a pointer, then we
+				#	need to dereference the pointer if it is being passed byval, or pass the pointer
+				#	itself if it's going byref.  That will be handled by the .assemble() function
+				#	for each child.
+
+				paramtype = curparam.type
+				self.children[i].assemble(assembler, procFuncHeadingScope)
+				if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
+					intparams += 1
+					if self.children[i].expressiontype == EXPRESSIONTYPE_REAL:  # pragma: no cover
+						raise ValueError("Cannot pass real into integer-typed parameter into " + symbol.procfuncheading.name + '()')
+					assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
+				elif paramtype == TOKEN_VARIABLE_TYPE_REAL:
+					realparams += 1
+					if self.children[i].expressiontype == EXPRESSIONTYPE_INT:
+						assembler.emitcode("CVTSI2SD XMM0, RAX")
+					# If a proc/function takes more than one Real parameter, the first parameter will be overwritten with the value of the last.
+					# unless we do this.  Reason: all floating point calculations put their result into XMM0.  First parameter to proc/function
+					# gets its value put in XMM0, then when system goes to calculate the second Real parameter, it first stores the
+					# value in XMM0 (when it is evaluated) and then pushes it to XMM1 since XMM1 holds the second parameter.
+					# Fix is to calculate the first parameter, stash it, then grab it back.
+					if realparams == 1:
+						# XMM0 contains the value after the self.children[i].assemble() from above
+						assembler.emitpushxmmreg("XMM0")
+					else:
+						assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
+				else:  # pragma: no cover
+					raise ValueError("Invalid expressiontype")
+			else:
+				# If we are passing into a proc/function a param that itself is not a pointer, then we need
+				#	to pass its address if it is being passed byref, or a copy of the value if
+				#	is not.
+				curchild = self.children[i]
+				childtoken = curchild.token
+
+				if childtoken.type != TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:  # pragma: no cover
+					raise ValueError("Variable identifier expected in " + symbol.procfuncheading.name + '()')
+
+				intparams += 1  # all pointers are ints
+
+				# Instead of calling the child's assemble() function, we wil assemble it here, because
+				#	the child's assemble will dereference the pointer if the child originally was passed
+				#	in byRef
+				found_symbol = False
+				if not (procFuncHeadingScope is None):
+					if not (procFuncHeadingScope.localvariableSymbolTable is None):
+						if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
+							found_symbol = True
+							childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
+							if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL]:
+								assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+							elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR]:
+								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+							else:  # pragma: no cover
+								raise ValueError("Invalid symboltype")
+				if not found_symbol:
+					# must be a global variable
+					childsymbol = assembler.variable_symbol_table.get(childtoken.value)
+					assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+
+			i += 1
+
+		if realparams > 0:
+			assembler.emitpopxmmreg("XMM0")
+
+		assembler.emitcode("CALL " + symbol.label, "invoke " + symbol.procfuncheading.name + '()')
+		assembler.restore_xmm_registers_after_procfunc_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
+		assembler.restore_int_registers_after_procfunc_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
 
 	def assemble(self, assembler, procFuncHeadingScope):
 		if self.token.type == TOKEN_INT:
@@ -725,99 +833,16 @@ class AST():
 					assembler.emitcode("MOVSD XMM0, [" + symbol.label + "]")
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					# call the function - return value is in RAX or XMM0
-					# current limitation - 6 int + 8 real parameters max - to increase this later, we just need to use relative
-					# stack pointer address in the local symbol table to store where the others are.
-					# the parameters will be the children in the AST
-					# any register (except XMM0) used to pass a parameter gets pushed onto the stack
-					# put the parameters into those registers, with special handling for XMM0
-					# call the function
-					# rax or XMM0 has the return
-					# pop all the registers back except XMM0
-
-					assembler.preserve_xmm_registers_for_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
-					assembler.preserve_int_registers_for_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
-
-					i = 0
-					intparams = 0
-					realparams = 0
-					while i < len(self.children):
-
-						curparam = symbol.procfuncheading.getParameterByPos(i)
-						if not curparam.byref:
-							# If we are passing into a function a value that itself is a pointer, then we
-							#	need to dereference the pointer if it is being passed byval, or pass the pointer
-							#	itself if it's going byref.  That will be handled by the .assemble() function
-							#	for each child.
-
-							paramtype = curparam.type
-							self.children[i].assemble(assembler, procFuncHeadingScope)
-							if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
-								intparams +=1
-								if self.children[i].expressiontype == EXPRESSIONTYPE_REAL: # pragma: no cover
-									raise ValueError("Cannot pass real into integer-typed parameter in function " + symbol.procfuncheading.name + '()')
-								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + ", RAX")
-							elif paramtype == TOKEN_VARIABLE_TYPE_REAL:
-								realparams +=1
-								if self.children[i].expressiontype == EXPRESSIONTYPE_INT:
-									assembler.emitcode("CVTSI2SD XMM0, RAX")
-								# If a function takes more than one Real parameter, the first parameter will be overwritten with the value of the last.
-								# unless we do this.  Reason: all floating point calculations put their result into XMM0.  First parameter to function
-								# gets its value put in XMM0, then when system goes to calculate the second Real parameter, it first stores the
-								# value in XMM0 (when it is evaluated) and then pushes it to XMM1 since XMM1 holds the second parameter.
-								# Fix is to calculate the first parameter, stash it, then grab it back.
-								if realparams == 1:
-									# XMM0 contains the value after the self.children[i].assemble() from above
-									assembler.emitpushxmmreg("XMM0")
-								else:
-									assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
-							else: # pragma: no cover
-								raise ValueError("Invalid expressiontype")
-						else:
-							# If we are passing into a function that itself is not a pointer, then we need
-							#	to pass its address if it is being passed byref, or a copy of the value if
-							#	is not.
-							curchild = self.children[i]
-							childtoken = curchild.token
-
-							if childtoken.type != TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION: # pragma: no cover
-								raise ValueError("Variable identifier expected in function " + symbol.procfuncheading.name + '()')
-
-							intparams += 1 # all pointers are ints
-
-							# Instead of calling the child's assemble() function, we wil assemble it here, because
-							#	the child's assemble will dereference the pointer if the child originally was passed
-							#	in byRef
-							found_symbol = False
-							if not (procFuncHeadingScope is None):
-								if not (procFuncHeadingScope.localvariableSymbolTable is None):
-									if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
-										found_symbol = True
-										childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
-										if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL]:
-											# stab in the dark
-											assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-										elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR]:
-											assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-										else: # pragma: no cover
-											raise ValueError("Invalid symboltype")
-							if not found_symbol:
-								# must be a global variable
-								childsymbol = assembler.variable_symbol_table.get(childtoken.value)
-								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-
-						i += 1
-
-					if realparams > 0:
-						assembler.emitpopxmmreg("XMM0")
-
-					assembler.emitcode("CALL " + symbol.label, "invoke function " + symbol.procfuncheading.name + '()')
-					assembler.restore_xmm_registers_after_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
-					assembler.restore_int_registers_after_func_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
-
+					self.assembleProcFuncInvocation(assembler, procFuncHeadingScope, symbol)
 				else: # pragma: no cover
 					raise ValueError ("Invalid variable type :" + vartuple[0])
-		elif self.token.type == TOKEN_FUNCTION:
-			pass # function declarations are asseembled earlier
+		elif self.token.type == TOKEN_PROCEDURE_CALL:
+			if not assembler.variable_symbol_table.exists(self.token.value): # pragma: no cover
+				raise ValueError("Invalid procedure name: " + self.token.value)
+			symbol = assembler.variable_symbol_table.get(self.token.value)
+			self.assembleProcFuncInvocation(assembler, procFuncHeadingScope, symbol)
+		elif self.token.type in (TOKEN_FUNCTION, TOKEN_PROCEDURE) :
+			pass # proc/function declarations are asseembled earlier
 		elif self.token.type == TOKEN_VAR:
 			pass  # variable declarations are assembled earlier
 		elif self.token.type == TOKEN_NOOP:
@@ -985,6 +1010,8 @@ class Tokenizer:
 					ret = Token(TOKEN_VAR, None)
 				elif ident == "function":
 					ret = Token(TOKEN_FUNCTION, None)
+				elif ident == "procedure":
+					ret = Token(TOKEN_PROCEDURE, None)
 				elif ident == "integer":
 					ret = Token(TOKEN_VARIABLE_TYPE_INTEGER, None)
 				elif ident == "real":
@@ -992,7 +1019,7 @@ class Tokenizer:
 				elif ident == "div":
 					ret = Token(TOKEN_IDIV, None)
 				else:  # assume any other identifier is a variable; if inappropriate, it will throw an error later in parsing.
-					ret = Token(TOKEN_VARIABLE_IDENTIFIER, ident)
+					ret = Token(TOKEN_IDENTIFIER, ident)
 			elif self.peek().isdigit():
 				num = self.getNumber()
 				if isinstance(num, int):
@@ -1090,13 +1117,14 @@ class Parser:
 			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 		else:
 			factor = self.tokenizer.getNextToken()
-			if factor.type == TOKEN_VARIABLE_IDENTIFIER:
+			if factor.type == TOKEN_IDENTIFIER:
 				# we are evaluating here
 				factor.type = TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION
 				ret = AST(factor)
 
 				if self.tokenizer.peek() == "(":
-					# this is a function or procedure invocation
+					# this is a function invocation - but at this point we cannot tell if it is
+					# a procedure invocation.  If is is a procedure invocation we will error later.
 					lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
 					ret.children.append(self.parseSimpleExpression())
 					while self.tokenizer.peek() == ",":
@@ -1226,12 +1254,28 @@ class Parser:
 						comma = self.tokenizer.getNextToken(TOKEN_COMMA)
 				rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 
-			elif tok.type == TOKEN_VARIABLE_IDENTIFIER:
-				# we are assigning here
-				tok.type = TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT
-				assignment_operator = self.tokenizer.getNextToken(TOKEN_ASSIGNMENT_OPERATOR)
-				ret = AST(tok)
-				ret.children.append(self.parseSimpleExpression())
+			elif tok.type == TOKEN_IDENTIFIER:
+				if self.tokenizer.peekMulti(2) == ":=":
+					# we are assigning here
+					tok.type = TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT
+					assignment_operator = self.tokenizer.getNextToken(TOKEN_ASSIGNMENT_OPERATOR)
+					ret = AST(tok)
+					ret.children.append(self.parseSimpleExpression())
+				else:
+					# procedure invocation - note that Pascal does not allow invoking a function
+					# and ignoring the result, so this cannot be a function invocation.
+					tok.type = TOKEN_PROCEDURE_CALL
+					ret = AST(tok)
+					if self.tokenizer.peek() == "(":
+						# this is a procedure invocation (or
+						lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+						ret.children.append(self.parseSimpleExpression())
+						while self.tokenizer.peek() == ",":
+							comma = self.tokenizer.getNextToken(TOKEN_COMMA)
+							ret.children.append(self.parseSimpleExpression())
+						rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+
+
 			else:
 				# self.raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY(tok.type))
 			    # roll the parser back
@@ -1281,7 +1325,7 @@ class Parser:
 			elif self.tokenizer.peekMatchStringAndSpace("function"):
 				done = True
 			else:
-				ident_token = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER)
+				ident_token = self.tokenizer.getNextToken(TOKEN_IDENTIFIER)
 				colon_token = self.tokenizer.getNextToken(TOKEN_COLON)
 				type_token = self.tokenizer.getNextToken()
 				if type_token.type not in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]: # pragma: no cover
@@ -1293,7 +1337,7 @@ class Parser:
 
 		return ret
 
-	def parseFunctionParameter(self):
+	def parseProcFuncParameter(self):
 		# <formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 
 		if self.tokenizer.peekMatchStringAndSpace("var"):
@@ -1301,30 +1345,33 @@ class Parser:
 			byref = True
 		else:
 			byref = False
-		paramname = self.tokenizer.getNextToken(TOKEN_VARIABLE_IDENTIFIER).value
+		paramname = self.tokenizer.getNextToken(TOKEN_IDENTIFIER).value
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		paramtypetoken = self.tokenizer.getNextToken()
 		if not paramtypetoken.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]: # pragma: no cover
-			self.raiseParseError("Expected Integer or Real Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtype.type))
+			self.raiseParseError("Expected Integer or Real Procedure/Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtype.type))
 		return ProcFuncParameter(paramname, paramtypetoken.type, byref)
 
-	def parseFunctionDeclaration(self):
-		# <function declaration> ::= <function heading> ";" <function body>
-		# <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
-		# <function body> ::= [<variable declaration part>] <statement part>
+	def parseFormalParameterList(self, procfuncheading):
 		# <formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
+		lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+		procfuncheading.parameters.append(self.parseProcFuncParameter())
+		while self.tokenizer.peek() == ";":
+			semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+			procfuncheading.parameters.append(self.parseProcFuncParameter())
+		rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+
+	def parseFunctionDeclaration(self):
+		# <function declaration> ::= <function heading> ";" <procedure or function body>
+		# <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
+		# <procedure or function body> ::= [<variable declaration part>] <statement part>
 
 		functoken = self.tokenizer.getNextToken(TOKEN_FUNCTION)
 		funcheading = ProcFuncHeading(self.tokenizer.getIdentifier().lower())
 
 
 		if self.tokenizer.peek() == "(":
-			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
-			funcheading.parameters.append(self.parseFunctionParameter())
-			while self.tokenizer.peek() == ";":
-				semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
-				funcheading.parameters.append(self.parseFunctionParameter())
-			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+			self.parseFormalParameterList(funcheading)
 
 
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
@@ -1344,12 +1391,39 @@ class Parser:
 
 		return ret
 
+	def parseProcedureDeclaration(self):
+		# <procedure declaration> ::= <procedure heading> ";" <procedure or function body>
+		# <procedure heading> ::= "procedure" <identifier> [<formal parameter list>]
+		# <procedure or function body> ::= [<variable declaration part>] <statement part>
+
+		proctoken = self.tokenizer.getNextToken(TOKEN_PROCEDURE)
+		procheading = ProcFuncHeading(self.tokenizer.getIdentifier().lower())
+
+		if self.tokenizer.peek() == "(":
+			self.parseFormalParameterList(procheading)
+		semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+		if self.tokenizer.peekMatchStringAndSpace("var"):
+			procheading.localvariableAST = self.parseVariableDeclarations()
+
+		ret = AST(proctoken)
+		ret.procFuncHeading = procheading
+		ret.children.append(self.parseStatementPart())
+
+		return ret
+
 	def parseProcedureFunctionDeclarationPart(self):
-		# procedure and function declaration part ::= {<function declaration> ";"}
+		# <procedure and function declaration part> ::= {(<procedure declaration> | <function declaration>) ";"}
 		ret = AST(Token(TOKEN_PROCFUNC_DECLARATION_PART, None))  # this is not a real token, it just holds procs and functions
-		while self.tokenizer.peekMatchStringAndSpace("function"):
-			ret.children.append(self.parseFunctionDeclaration())
-			semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+		done = False
+		while not done:
+			if self.tokenizer.peekMatchStringAndSpace("function"):
+				ret.children.append(self.parseFunctionDeclaration())
+				semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+			elif self.tokenizer.peekMatchStringAndSpace("procedure"):
+				ret.children.append(self.parseProcedureDeclaration())
+				semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
+			else:
+				done = True
 		return ret
 
 
@@ -1365,16 +1439,16 @@ class Parser:
 		semi = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
 		# block ::= [<declaration part>] <statement part>
-		# declaration part ::= [<variable declaration part>] [<function declaration part]
+		# <declaration part> ::= [<variable declaration part>] [<procedure and function declaration part>]
 		if self.tokenizer.peekMatchStringAndSpace("var"):
 			variable_declarations = self.parseVariableDeclarations()
 		else:
 			variable_declarations = None
 
-		if self.tokenizer.peekMatchStringAndSpace("function"):
-			function_declarations = self.parseProcedureFunctionDeclarationPart()
+		if self.tokenizer.peekMatchStringAndSpace("function") or self.tokenizer.peekMatchStringAndSpace("procedure"):
+			procfunc_declarations = self.parseProcedureFunctionDeclarationPart()
 		else:
-			function_declarations = None
+			procfunc_declarations = None
 
 		statementPart = self.parseStatementPart()
 		period = self.tokenizer.getNextToken(TOKEN_PERIOD)
@@ -1384,8 +1458,8 @@ class Parser:
 		if not (variable_declarations is None):  # variable declarations are optional
 			ret.children.append(variable_declarations)
 
-		if not (function_declarations is None):  # function declarations are optional
-			ret.children.append(function_declarations)
+		if not (procfunc_declarations is None):  # procedure and function declarations are optional
+			ret.children.append(procfunc_declarations)
 
 		ret.children.append(statementPart)
 

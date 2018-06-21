@@ -21,11 +21,13 @@ Text in /* */ is a comment
 <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
 <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
 <type> ::= "integer" | "real"   
-<procedure and function declaration part> ::= {<function declaration> ";"}
-<function declaration> ::= <function heading> ";" <function body>
+<procedure and function declaration part> ::= {(<procedure declaration> | <function declaration>) ";"}
+<function declaration> ::= <function heading> ";" <procedure or function body>
+<procedure declaration> ::= <procedure heading> ";" <procedure or function body>
 <function heading> ::= "function" <identifier> [<formal parameter list>] ":" <type>
-<function body> ::= [<variable declaration part>] <statement part>
-<formal parameter list> ::= "(" <identifier> ":" <type> {";" <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
+<procedure heading> ::= "procedure" <identifier> [<formal parameter list>]
+<procedure or function body> ::= [<variable declaration part>] <statement part>
+<formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 <statement part> ::= "begin" <statement sequence> "end"
 <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
 <statement sequence> ::= <statement> {";" <statement>}
@@ -56,7 +58,7 @@ Text in /* */ is a comment
 <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 ```
  
-In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations and an optional set of function declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements, variable assignments, function invocations, ```while/do``` blocks, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` or ```while``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, or after the ```do```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display string literals, variables, mathematical expressions.  Addition, subtraction, multiplication, and both floating-point and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86-64 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
+In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations and an optional set of procedure and function declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements, variable assignments, function invocations, ```while/do``` blocks, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` or ```while``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, or after the ```do```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display string literals, variables, mathematical expressions.  Addition, subtraction, multiplication, and both floating-point and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86-64 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
 
 The compiler will ignore comments between open and close curly braces ```{``` and ```}```, anywhere in the code.  So ``` 4 + {random comment} 2``` will evaluate to ```6```.
 
@@ -78,6 +80,14 @@ Execute ```python3 compiler_test.py```
 ### Known bugs:
 
 If a function takes a byRef integer and real parameters, and it is invoked from another function (not main) and the real parameter is updated, then the integer paramter value is wiped out.  See: ```compiler_test_files/known_bug1.pas```.  It should display 8 then 5, and actually displays 8 then 0.
+
+Compiler does not provide a good error message when invoking a procedure as a parameter to a procedure or function, instead giving an error that "vartuple is not defined"
+
+Compiler does not error when invoking a function and ignoring the return value (basically treating a function like a procedure call).  This is not valid Pascal.  
+
+### Not yet tested:
+
+Have not tested ByRef parameters with Procedures
 
 
 ### Code Coverage:

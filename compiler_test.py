@@ -110,8 +110,9 @@ def main():
 	f = dotest("compiler_test_files/test21e.pas", "compiler_test_files/test21e.out")
 	f = dotest("compiler_test_files/test21fa.pas", "compiler_test_files/test21fa.out")
 	f = dotest("compiler_test_files/test22.pas", "compiler_test_files/test22.out")
+	f = dotest("compiler_test_files/test23.pas", "compiler_test_files/test23.out")
 	print ("Tests Attempted: " + str(NUM_ATTEMPTS))
 	print ("Tests Succeeded: " + str(NUM_SUCCESSES))
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
 	main()

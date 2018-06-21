@@ -1,12 +1,13 @@
 import os
 
 SYMBOL_FUNCTION = 0
-SYMBOL_INTEGER = 1
-SYMBOL_INTEGER_PTR = 2
-SYMBOL_REAL = 3
-SYMBOL_REAL_PTR = 4
+SYMBOL_PROCEDURE = 1
+SYMBOL_INTEGER = 2
+SYMBOL_INTEGER_PTR = 3
+SYMBOL_REAL = 4
+SYMBOL_REAL_PTR = 5
 
-DEBUG_SYMBOLDISPLAY = ["FUNCTION", "INT", "REAL"]
+DEBUG_SYMBOLDISPLAY = ["FUNCTION", "PROCEDURE", "INT", "INTPTR", "REAL", "REALPTR"]
 
 def intParameterPositionToRegister(pos):
 	# First six integer parameters to functions are stored in registers.
@@ -86,7 +87,7 @@ class SymbolTable:
 	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
 		if self.exists(symbolname): # pragma: no cover
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
-		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_REAL, SYMBOL_INTEGER, SYMBOL_REAL_PTR, SYMBOL_INTEGER_PTR]: # pragma: no cover
+		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_PROCEDURE, SYMBOL_REAL, SYMBOL_INTEGER, SYMBOL_REAL_PTR, SYMBOL_INTEGER_PTR]: # pragma: no cover
 			raise ValueError ("Invalid symbol type")
 		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
 
@@ -163,7 +164,7 @@ class Assembler:
 		self.next_local_label_index += 1
 		return ret
 
-	def preserve_xmm_registers_for_func_call(self, num_registers):
+	def preserve_xmm_registers_for_procfunc_call(self, num_registers):
 		if num_registers > 8: # pragma: no cover
 			raise ValueError ("Cannot preserve more than 8 XMM registers")
 		i = 0
@@ -174,7 +175,7 @@ class Assembler:
 				self.emitpushxmmreg("XMM" + str(i))
 			i += 1
 
-	def restore_xmm_registers_after_func_call(self, num_registers):
+	def restore_xmm_registers_after_procfunc_call(self, num_registers):
 		if num_registers > 8: # pragma: no cover
 			raise ValueError ("Cannot restore more than 8 XMM registers")
 		i = num_registers - 1;
@@ -185,7 +186,7 @@ class Assembler:
 				self.emitpopxmmreg("XMM" + str(i))
 			i -= 1
 
-	def preserve_int_registers_for_func_call(self, num_registers):
+	def preserve_int_registers_for_procfunc_call(self, num_registers):
 		# push the rdi, rsi, rdx, rcx, r8, and r9
 		if num_registers >= 1:
 			self.emitcode("PUSH RDI")
@@ -203,7 +204,7 @@ class Assembler:
 		# always preserve RBP
 		self.emitcode("PUSH RBP")
 
-	def restore_int_registers_after_func_call(self, num_registers):
+	def restore_int_registers_after_procfunc_call(self, num_registers):
 		self.emitcode("POP RBP")
 
 		if num_registers >=6:
