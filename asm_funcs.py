@@ -222,13 +222,12 @@ class Assembler:
 
 
 	def setup_bss(self):
-		self.emitsection("section .bss")
-		self.emitcode("write_CRLF resb 2")
-
-		for key in self.variable_symbol_table.symbollist():
-			symbol = self.variable_symbol_table.get(key)
-			if symbol.type in [SYMBOL_INTEGER, SYMBOL_REAL]:
-				self.emitcode(symbol.label + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int or float
+		if len(self.variable_symbol_table.symbollist()) > 0:
+			self.emitsection("section .bss")
+			for key in self.variable_symbol_table.symbollist():
+				symbol = self.variable_symbol_table.get(key)
+				if symbol.type in [SYMBOL_INTEGER, SYMBOL_REAL]:
+					self.emitcode(symbol.label + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int or float
 
 
 
@@ -244,37 +243,17 @@ class Assembler:
 	def setup_text(self):
 		self.emitsection("section .text")
 		self.emitcode("global _start")
-		self.emitcode("extern prtdec")  # imported from nasm64
-		self.emitcode("extern prtdbl")  # imported from nasm64
+		self.emitcode("extern prtdec")  # imported from nsm64
+		self.emitcode("extern prtdbl")  # imported from nsm64
+		self.emitcode("extern newline") # imported from nsm64
 
 	def setup_start(self):
 		self.emitlabel("_start")
-		# need to set these constants.  When I used section .data, the issue was that they would somehow
-		# get overwritten
-		self.emitcode("; define CRLF - ascii 10 + ascii 0")
-		self.emitcode("mov rcx, write_CRLF")
-		self.emitcode("mov rbx, 10")
-		self.emitcode("mov [rcx], rbx")
-		self.emitcode("inc rcx")
-		self.emitcode("mov rbx, 0")
-		self.emitcode("mov [rcx], rbx")
 
 	def emit_terminate(self):
 		self.emitcode("mov rax,60")
 		self.emitcode("mov rdi,0")
 		self.emitcode("syscall")
-
-	def emit_writeCRLF(self):
-		self.emitlabel("_writeCRLF")
-		self.emitcode("mov rax, 1")
-		self.emitcode("mov rdi, 1")
-		self.emitcode("mov rsi, write_CRLF")
-		self.emitcode("mov rdx, 1")
-		self.emitcode("syscall")
-		self.emitcode("ret")
-
-	def emit_systemfunctions(self):
-		self.emit_writeCRLF()
 
 
 class Compiler:

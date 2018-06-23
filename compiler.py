@@ -730,15 +730,7 @@ class AST():
 				else: # pragma: no cover
 					raise ValueError ("Do not know how to write this type.")
 			if self.token.type == TOKEN_WRITELN:
-				assembler.emitcode("push rax")
-				assembler.emitcode("push rdi")
-				assembler.emitcode("push rsi")
-				assembler.emitcode("push rdx")
-				assembler.emitcode("call _writeCRLF")
-				assembler.emitcode("pop rdx")
-				assembler.emitcode("pop rsi")
-				assembler.emitcode("pop rdi")
-				assembler.emitcode("pop rax")
+				assembler.emitcode("call newline")
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
 			assembler.emitcomment(self.comment)
 			found_symbol = False
@@ -1489,7 +1481,6 @@ class Parser:
 		self.assembleAST()
 
 		self.assembler.emit_terminate()
-		self.assembler.emit_systemfunctions()
 		self.assembler.cleanup()
 
 
