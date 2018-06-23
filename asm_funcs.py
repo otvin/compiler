@@ -264,7 +264,7 @@ class Compiler:
 	def do_compile(self):
 		# os.system("nasm -f elf64 -o nsm64.o nsm64.asm")
 		# os.system("nasm -f elf64 -o " + self.obj_filename + " " + self.asm_filename)
-
+		#
 		# Need to make debug symbols a flag but for now this will work
 		os.system("nasm -f elf64 -F dwarf -g -o nsm64.o nsm64.asm")
 		os.system("nasm -f elf64 -F dwarf -g -o " + self.obj_filename + " " + self.asm_filename)

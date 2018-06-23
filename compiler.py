@@ -975,7 +975,7 @@ class Tokenizer:
 				errstr = "Expected " + DEBUG_TOKENDISPLAY(requiredtokentype) # pragma: no cover
 			self.raiseTokenizeError("Unexpected end of input. " + errstr) # pragma: no cover
 		else:
-
+			#
 			if self.peek().isalpha():
 				ident = self.getIdentifier().lower()
 				if ident == "begin":
