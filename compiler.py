@@ -705,19 +705,10 @@ class AST():
 						raise ValueError ("No literal for string :" + child.token.value)
 					else:
 						data_name = assembler.string_literals[child.token.value]
-						assembler.emitcode("push rax")
 						assembler.emitcode("push rdi")
-						assembler.emitcode("push rsi")
-						assembler.emitcode("push rdx")
-						assembler.emitcode("mov rax, 1")
-						assembler.emitcode("mov rdi, 1")
-						assembler.emitcode("mov rsi, " + data_name)
-						assembler.emitcode("mov rdx, " + data_name + "Len")
-						assembler.emitcode("syscall")
-						assembler.emitcode("pop rdx")
-						assembler.emitcode("pop rsi")
+						assembler.emitcode("mov rdi, " + data_name)
+						assembler.emitcode("call prtstrz")
 						assembler.emitcode("pop rdi")
-						assembler.emitcode("pop rax")
 				elif child.expressiontype == EXPRESSIONTYPE_INT:
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in RAX
 					assembler.emitcode("push rdi")
@@ -975,7 +966,6 @@ class Tokenizer:
 				errstr = "Expected " + DEBUG_TOKENDISPLAY(requiredtokentype) # pragma: no cover
 			self.raiseTokenizeError("Unexpected end of input. " + errstr) # pragma: no cover
 		else:
-			#
 			if self.peek().isalpha():
 				ident = self.getIdentifier().lower()
 				if ident == "begin":

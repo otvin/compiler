@@ -235,25 +235,26 @@ class Assembler:
 		if len(self.string_literals.keys()) > 0 or len(self.real_literals.keys()) > 0:
 			self.emitsection("section .data")
 			for key in self.string_literals.keys():
-				self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`')
-				self.emitcode(self.string_literals[key] + 'Len equ $-' + self.string_literals[key])
+				self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`, 0')
 			for key in self.real_literals.keys():
 				self.emitcode(self.real_literals[key] + ' dq ' + str(key))
 
 	def setup_text(self):
-		self.emitsection("section .text")
-		self.emitcode("global _start")
+		self.emitcode("global main")
 		self.emitcode("extern prtdec")  # imported from nsm64
 		self.emitcode("extern prtdbl")  # imported from nsm64
+		self.emitcode("extern prtstrz") # imported from nsm64
 		self.emitcode("extern newline") # imported from nsm64
+		self.emitcode("extern exit")	# imported from nsm64
+
+		self.emitcode("extern newstring") # imported from fredstringfunc
+		self.emitsection("section .text")
 
 	def setup_start(self):
-		self.emitlabel("_start")
+		self.emitlabel("main")
 
 	def emit_terminate(self):
-		self.emitcode("mov rax,60")
-		self.emitcode("mov rdi,0")
-		self.emitcode("syscall")
+		self.emitcode("call exit")
 
 
 class Compiler:
@@ -264,9 +265,9 @@ class Compiler:
 	def do_compile(self):
 		# os.system("nasm -f elf64 -o nsm64.o nsm64.asm")
 		# os.system("nasm -f elf64 -o " + self.obj_filename + " " + self.asm_filename)
-		#
 		# Need to make debug symbols a flag but for now this will work
 		os.system("nasm -f elf64 -F dwarf -g -o nsm64.o nsm64.asm")
+		os.system("nasm -f elf64 -F dwarf -g -o fredstringfunc.o fredstringfunc.asm")
 		os.system("nasm -f elf64 -F dwarf -g -o " + self.obj_filename + " " + self.asm_filename)
 
 class Linker:
@@ -275,7 +276,7 @@ class Linker:
 		self.exe_filename = exe_filename
 
 	def do_link(self):
-		os.system("ld " + self.obj_filename + " nsm64.o -o " + self.exe_filename)
+		os.system("gcc -no-pie " + self.obj_filename + " nsm64.o fredstringfunc.o -o " + self.exe_filename)
 
 
 

@@ -1,6 +1,27 @@
 # compiler
 
-This program is a compiler for a subset of Pascal.  Compiler is written in python3 in Ubuntu.  The assembly files are written in NASM format.  You must install NASM via e.g. ```sudo apt-get install nasm``` in order for the program to compile the assembly.
+This program is a compiler for a subset of Pascal.  Compiler is written in python3 in Ubuntu.  The assembly files are written in NASM format.  You must install NASM via e.g. ```sudo apt-get install nasm``` in order for the program to compile the assembly.  The resulting binaries are 64-bit.
+
+The compiler supports the following Pascal language features:
+* Signed Real and Integer variables and literals (64-bit)
+* String literals
+* if - then [- else]
+* while - do
+* Math operations: addition, subtraction, multiplication, and floating point/integer division
+  * When Real and Integer combined in an operation, result is a Real
+* Logical operators: equal to, not equal, less than, less than or equal, greater than, greater than or equal
+  * both Real and Integer
+* Procedures and Functions
+  *  Parameters passed by value or by reference
+  *  Up to 8 Real parameters by value, up to a combined 6 Integer + by reference parameters
+  *  Integers passed in byval to Real parameters get converted to Real
+  *  Recursion
+* Write() and Writeln() to stdout
+* Comments
+
+Originally, I intended to develop the language strictly using Assembly, leveraging an open-source library to handle printing Integers and Reals to stdout vs. rolling my own.  However, doing dynamic memory allocation without malloc() seemed too difficult.  So, for now, I am linking libc for access to malloc() and free().    
+
+    
 
 ### Current Status:
 
