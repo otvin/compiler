@@ -11,6 +11,7 @@ extern prtstrz  ; from nsm64
 extern prtstr   ; from nsm64
 extern newline  ; from nsm64
 extern exit     ; from nsm64
+extern prtdec   ; from nsm64
 
 extern malloc  ; from libc
 extern free    ; from libc
@@ -21,6 +22,8 @@ global freestring
 global printstring
 global literaltostring
 global stringlength
+global stringconcatstring
+global stringconcatliteral
 
 section .data
 
@@ -68,7 +71,7 @@ newstring:
 ;       - deallocates memory for a string
 ;
 ;----------
-; RDI: Pointer to the address of the String
+; RDI: Address of the String
 ;----------
 ; Returns: None
 ;----------
@@ -82,12 +85,13 @@ freestring:
 ;   printstring
 ;       - displays the contents of the string to stdout
 ;----------
-; RDI: Pointer to the address of the String
+; RDI: Address of the String
 ;----------
 ; Returns: None
 ;----------
 printstring:
     ; rsi takes the length of the string as a parameter.  "sil" is lowest byte of rsi.
+    xor rsi,rsi
     mov sil, byte [rdi]
     ; rdi takes the pointer to the start of the string, which is one byte after rdi.
     inc rdi ; functions are allowed to trash RDI
@@ -99,7 +103,7 @@ printstring:
 ;   stringlength
 ;       - displays the length of a String (which is the first byte)
 ;----------
-; RDI: Pointer to the address of the String
+; RDI: Address of the String
 ;----------
 ; Returns: RAX (AL actually) will contain the length
 ;----------
@@ -114,7 +118,7 @@ stringlength:
 ;   literaltostring
 ;       - creates a String, with dynamic memory allocated, containing the literal.  String literals are zero-terminated.
 ;----------
-; RDI: Pointer to the address of the string literal
+; RDI: Address of the string literal
 ;----------
 ; Returns: Address of the new String in RAX
 ;----------
@@ -156,4 +160,49 @@ literaltostring:
     call newline
     call exit      
 
+;----------
+;
+;   stringconcatstring
+;       - appends second String to first String
+;
+;----------
+; RDI: Address of the first String
+; RSI: Address of the second String
+;----------
+; Returns: None.  However, the String pointed to by RDI will be modified.
+;----------
 
+stringconcatstring:
+    ; R9 - length of new string
+    ; RDX - length of first string (original)
+    ; RCX - length of second string
+    
+    ; ensure length of combined string will not exceed the max
+    xor rcx,rcx
+    xor rdx,rdx
+    xor r9,r9
+    mov r9b, byte [RDI]
+    mov dl, r9b ; save length of first string into low bits of rdx
+    mov cl, byte [RSI]
+    add r9, rcx
+    cmp r9, 255
+    jg .err1    
+    
+    push rdi ; movsb uses rdi as the destination, so we need to preserve RDI so we can update it at the end.
+    inc rdi ; rdi now points to first actual byte of the string
+    add rdi, rdx  ; rdi now points to the first byte after end of the string
+    inc rsi; rsi now points to the first actual byte of the second string
+    ; rcx from above has number of characters to copy, needed for REP to work  
+    rep movsb
+    
+    pop rdi ; get rdi back to pointing to the first string
+    ; update the length of the first string to be the combined length
+    mov byte [rdi], r9b    
+
+.done:
+    ret
+.err1:                
+    mov rdi, fred_err_str_too_large
+    call prtstrz
+    call newline
+    call exit  
