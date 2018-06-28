@@ -206,3 +206,71 @@ stringconcatstring:
     call prtstrz
     call newline
     call exit  
+
+        
+;----------
+;
+;   stringconcatliteral
+;       - appends a zero-terminated string literal to a String
+;
+;----------
+; RDI: Address of the String
+; RSI: Address of the string literal
+;----------
+; Returns: None.  However, the String pointed to by RDI will be modified, and RSI will be trashed.
+;----------
+
+
+stringconcatliteral:
+    ; R9 - length of new string
+    ; RDX - length of first string (original)
+    ; RCX - length of second string
+    ; R8 - used to assign the character to the String
+    
+    
+    xor rdx,rdx
+    xor r9,r9
+    mov r9b, byte [RDI]
+    mov dl, r9b ; save length of first string into low bits of rdx
+    
+    ; we need to find the length of the zero-terminated string literal
+    mov al,0  ; scasb scans the string looking for something that matches al.  In this case, zero-terminator.
+    mov rcx,-1 ; scasb decrements rcx every iteration, and will stop when rcx == 0 or when it finds al.  By setting to -1 we ensure it doesn't hit 0.
+    push rdi ; scasb uses rdi as its pointer
+    mov rdi, rsi
+    cld ; make sure we're going forward.
+    repne scasb
+    ; at this point, the length of the string can be computed two ways.
+    ; a) look at current position of rdi vs. rsi
+    ; b) look at rcx, which is -1 - (length + 1) or -2 - length.  So add 2 to rcx and negate it will give you the length
+    add rcx, 2
+    neg rcx
+
+    ; ensure length of combined string will not exceed the max
+    add r9, rcx
+    cmp r9, 255
+    jg .err1
+
+    pop rdi
+    push rdi
+    mov byte [rdi], r9b ; set the new length of the String
+    pop rdi ; rdi now holds address of String
+    push rdi ; but we don't want to forget the address of the String
+    inc rdi ; rdi now points to the first byte after the length
+    add rdi, rdx ; rdi now points to the first byte after the end of the original String
+.loop:
+    cmp byte [rsi], 0
+    je .done
+    mov r8b, byte[rsi]
+    mov byte[rdi], r8b
+    inc rsi
+    inc rdi
+    jmp .loop
+.done:
+    pop rdi
+    ret
+.err1:                
+    mov rdi, fred_err_str_too_large
+    call prtstrz
+    call newline
+    call exit
