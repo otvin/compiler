@@ -24,6 +24,7 @@ global literaltostring
 global stringlength
 global stringconcatstring
 global stringconcatliteral
+global copystring
 
 section .data
 
@@ -187,12 +188,13 @@ stringconcatstring:
     add r9, rcx
     cmp r9, 255
     jg .err1    
-    
+
     push rdi ; movsb uses rdi as the destination, so we need to preserve RDI so we can update it at the end.
     inc rdi ; rdi now points to first actual byte of the string
     add rdi, rdx  ; rdi now points to the first byte after end of the string
     inc rsi; rsi now points to the first actual byte of the second string
     ; rcx from above has number of characters to copy, needed for REP to work  
+    cld
     rep movsb
     
     pop rdi ; get rdi back to pointing to the first string
@@ -274,3 +276,38 @@ stringconcatliteral:
     call prtstrz
     call newline
     call exit
+
+;----------
+;
+;   copystring
+;       - creates a String, with dynamic memory allocated, that has same value as the input String
+;----------
+; RDI: Address of the String to copy
+;----------
+; Returns: Address of the new (replica) String
+;----------
+
+copystring:
+    ; RCX - has the length of the string being copied
+
+
+    push rdi
+    call newstring ; we have a new string now in RAX
+    pop rdi
+
+    push rdi
+    push rax ; movsb needs the destination to be in rdi and the source to be in rsi
+    pop rdi
+    pop rsi
+
+    push rsi ; this is the original String
+    push rdi ; this is the new String
+    xor rcx,rcx
+    mov cl, byte[rsi]
+    inc rcx ; we need to copy the length byte, plus num bytes = length of the string
+    cld
+    rep movsb
+
+    pop rax
+    pop rdi
+    ret
