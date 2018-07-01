@@ -25,6 +25,7 @@ global stringlength
 global stringconcatstring
 global stringconcatliteral
 global copystring
+global copyliteraltostring
 
 section .data
 
@@ -280,34 +281,74 @@ stringconcatliteral:
 ;----------
 ;
 ;   copystring
-;       - creates a String, with dynamic memory allocated, that has same value as the input String
+;       - copy the second string into the first string
 ;----------
-; RDI: Address of the String to copy
+; RDI: Address of the first string
+; RSI: Address of the second string
 ;----------
-; Returns: Address of the new (replica) String
+; Returns: RAX contains a pointer to the same address as the original string, which has been modified.
+;----------
+; Notes: RDI also contains the same value as it started, as this function currently does not modify RDI
 ;----------
 
 copystring:
     ; RCX - has the length of the string being copied
 
-
-    push rdi
-    call newstring ; we have a new string now in RAX
-    pop rdi
-
-    push rdi
-    push rax ; movsb needs the destination to be in rdi and the source to be in rsi
-    pop rdi
-    pop rsi
-
-    push rsi ; this is the original String
-    push rdi ; this is the new String
+    ; movsb needs the destination to be in rdi and the source to be in rsi
+    mov rax, rdi
     xor rcx,rcx
     mov cl, byte[rsi]
     inc rcx ; we need to copy the length byte, plus num bytes = length of the string
     cld
     rep movsb
-
-    pop rax
-    pop rdi
+    mov rdi, rax
     ret
+
+
+;----------
+;
+;   copyliteraltostring
+;       - copies a literal into a string that has already been allocated
+;----------
+; RDI: Address of the string
+; RSI: Address of the literal
+;----------
+; Returns: RAX contains a pointer to the same address as the original string, which has been modified.
+;----------
+; Notes: RDI also contains the same value as it started, as this function currently does not modify RDI
+;----------
+
+copyliteraltostring:
+    push RDI
+
+    ; RCX - used to walk the literal
+    ; RDX - used to walk the String
+    ; R8 - used to assign the character to the String
+    ; R9 - used to count characters
+    mov rcx, rsi
+    mov rdx, rdi
+    inc rdx
+    mov r9, 0
+.loop:
+    ; if we see the null terminator we are done
+    cmp byte [rcx], 0
+    je .done
+    ; validate we can increase the length of the String
+    cmp r9, 255
+    jge .err1
+    mov r8b, byte[rcx]
+    mov byte [rdx], r8b
+    inc r9
+    inc rdx
+    inc rcx
+    jmp .loop
+.done:
+    mov byte [rax], r9b ; put the size of the string as the first byte of RAX.
+    pop rdi
+    mov rax, rdi
+    ret
+.err1:
+    mov rdi, fred_err_str_too_large
+    call prtstrz
+    call newline
+    call exit

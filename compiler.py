@@ -14,6 +14,7 @@ def TokDef(display_string):
 # we could extend to using namedtuples later if we want to use this for pattern matching
 TOKEN_INT = TokDef("INT")
 TOKEN_REAL = TokDef("REAL")
+TOKEN_STRING = TokDef("STRING")
 TOKEN_PLUS = TokDef("+")
 TOKEN_MINUS = TokDef("-")
 TOKEN_MULT = TokDef("*")
@@ -41,20 +42,24 @@ TOKEN_PROCFUNC_DECLARATION_PART = TokDef("{Procedures/Functions}")  # This is no
 TOKEN_FUNCTION = TokDef("FUNCTION")
 TOKEN_PROCEDURE = TokDef("PROCEDURE")
 
-TOKEN_WRITELN = TokDef("WRITELN")
-TOKEN_WRITE = TokDef("WRITE")
 TOKEN_IF = TokDef("IF")
 TOKEN_THEN = TokDef("THEN")
 TOKEN_ELSE = TokDef("ELSE")
 TOKEN_WHILE = TokDef("WHILE")
 TOKEN_DO = TokDef("DO")
 
-TOKEN_STRING = TokDef("String Literal")
+TOKEN_WRITELN = TokDef("WRITELN")
+TOKEN_WRITE = TokDef("WRITE")
+TOKEN_CONCAT = TokDef("CONCAT")
+
+
+TOKEN_STRING_LITERAL = TokDef("String Literal")
 TOKEN_IDENTIFIER = TokDef("Undetermined Identifier")
 TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT = TokDef("VARIABLE ASSIGNMENT")
 TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION = TokDef("VARIABLE EVALUATION")
 TOKEN_VARIABLE_TYPE_INTEGER = TokDef("VARIABLE TYPE: Integer")
 TOKEN_VARIABLE_TYPE_REAL = TokDef("VARIABLE TYPE: Real")
+TOKEN_VARIABLE_TYPE_STRING = TokDef("VARIABLE TYPE: String")
 TOKEN_PROCEDURE_CALL = TokDef("Procedure Call")
 
 TOKEN_NOOP = TokDef("NO-OP")
@@ -62,6 +67,7 @@ TOKEN_NOOP = TokDef("NO-OP")
 
 EXPRESSIONTYPE_INT = 0
 EXPRESSIONTYPE_REAL = 1
+EXPRESSIONTYPE_STRING = 2
 
 def DEBUG_TOKENDISPLAY(token): # pragma: no cover
 	return token[1]
@@ -89,7 +95,7 @@ def isSymbol(char):
 # <declaration part> ::= [<variable declaration part>] [<procedure and function declaration part>]
 # <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
 # <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
-# <type> ::= "integer" | "real"
+# <type> ::= "integer" | "real" | "string"
 # <procedure and function declaration part> ::= {(<procedure declaration> | <function declaration>) ";"}
 # <function declaration> ::= <function heading> ";" <procedure or function body>
 # <procedure declaration> ::= <procedure heading> ";" <procedure or function body>
@@ -101,17 +107,19 @@ def isSymbol(char):
 # <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
 # <statement sequence> ::= <statement> | <statement> ';' <statement sequence>
 # <statement> ::= <simple statement> | <structured statement> | <empty statement>
-# <simple statement> ::= <assignment statement> | <write statement>   /* Fred note - write statement not in official BNF */
+# <simple statement> ::= <assignment statement> | <write statement> | <concat statement> /* Fred note - concat / write statement not in official BNF */
 # <assignment statement> ::= <variable identifier> ":=" <simple expression>
 # <write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
 # <write parameter> ::= <simple expression> | <string literal>
+# <concat statement> ::= "concat" "(" <string parameter> "," <string parameter> {"," <string parameter>} ")"
+# <string parameter> :: <string literal> | <variable identifier>
 # <structured statement> ::= <compound statement> | <while statement> | <if statement>
 # <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
 # <while statement> ::= "while" <expression> "do" <statement>
 # <expression> ::= <simple expression> [<relational operator> <simple expression>]
 # <simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> */
 # <term> ::= <factor> { <multiplication operator> <factor> }
-# <factor> ::= <integer> | <real> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
+# <factor> ::= <integer> | <real> | <string> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
 # <function designator> ::= <function identifier> <actual parameter list>
 # <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
@@ -224,7 +232,7 @@ class AST():
 		print(typestr + self.token.debugprint())
 
 	def find_string_literals(self, assembler):
-		if self.token.type == TOKEN_STRING:
+		if self.token.type == TOKEN_STRING_LITERAL:
 			if not (self.token.value in assembler.string_literals):
 				assembler.string_literals[self.token.value] = assembler.generate_literal_name('string')
 		else:
@@ -250,6 +258,11 @@ class AST():
 				raise ValueError ("Variable redefined: " + self.token.value)
 			else:
 				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_REAL, assembler.generate_variable_name('real'))
+		elif self.token.type == TOKEN_VARIABLE_TYPE_STRING:
+			if self.token.value in assembler.variable_symbol_table.symbollist(): # pragma: no cover
+				raise ValueError ("Variable redefined: " + self.token.value)
+			else:
+				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_STRING, assembler.generate_variable_name('string'))
 		elif self.token.type == TOKEN_FUNCTION:
 			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
@@ -271,24 +284,48 @@ class AST():
 			else:
 				child.static_type_check(assembler, parentProcFuncHeading)
 
+		# Just to save some typing
+		etype0 = None
+		etype1 = None
+		if len(self.children) >= 2:
+			etype1 = self.children[1].expressiontype
+		if len(self.children) >= 1:
+			etype0 = self.children[0].expressiontype
+
 		if self.token.type == TOKEN_INT:
 			self.expressiontype = EXPRESSIONTYPE_INT
 		elif self.token.type == TOKEN_REAL:
 			self.expressiontype = EXPRESSIONTYPE_REAL
-		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT]:
+		elif self.expressiontype in [TOKEN_STRING, TOKEN_STRING_LITERAL]:
+			self.expressiontype = EXPRESSIONTYPE_STRING
+		elif self.token.type == TOKEN_PLUS:
 			# validation check
-			if self.children[0].expressiontype not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
+			if etype0 not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL, EXPRESSIONTYPE_STRING]:  # pragma: no cover
+				raise ValueError("Invalid type for first operand")
+			if etype1 not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL, EXPRESSIONTYPE_STRING]:  # pragma: no cover
+				raise ValueError("Invalid type for second operand")
+			if (etype0 == EXPRESSIONTYPE_STRING or etype1 == EXPRESSIONTYPE_STRING) and etype0 != etype1:  # pragma: no cover
+				raise ValueError("Cannot mix String and numeric types for this operator")
+			if etype0 == EXPRESSIONTYPE_STRING and etype1 == EXPRESSIONTYPE_STRING:
+				self.expressiontype = EXPRESSIONTYPE_STRING
+			elif etype0 == EXPRESSIONTYPE_INT and etype1 == EXPRESSIONTYPE_INT:
+				self.expressiontype = EXPRESSIONTYPE_INT
+			else:
+				self.expressiontype = EXPRESSIONTYPE_REAL
+		elif self.token.type in [TOKEN_MINUS, TOKEN_MULT]:
+			# validation check
+			if etype0 not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type for first operand")
-			if self.children[1].expressiontype not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
+			if etype1 not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type for second operand")
-			if self.children[0].expressiontype == EXPRESSIONTYPE_INT and self.children[1].expressiontype == EXPRESSIONTYPE_INT:
+			if etype0 == EXPRESSIONTYPE_INT and etype1 == EXPRESSIONTYPE_INT:
 				self.expressiontype = EXPRESSIONTYPE_INT
 			else:
 				self.expressiontype = EXPRESSIONTYPE_REAL
 		elif self.token.type == TOKEN_IDIV:
-			if self.children[0].expressiontype != EXPRESSIONTYPE_INT: # pragma: no cover
+			if etype0 != EXPRESSIONTYPE_INT: # pragma: no cover
 				raise ValueError ("First operand of DIV must be an Integer.")
-			if self.children[1].expressiontype != EXPRESSIONTYPE_INT: # pragma: no cover
+			if etype1 != EXPRESSIONTYPE_INT: # pragma: no cover
 				raise ValueError ("Second operand of DIV must be an Integer.")
 			self.expressiontype = EXPRESSIONTYPE_INT
 		elif self.token.type == TOKEN_DIV:
@@ -306,6 +343,10 @@ class AST():
 							self.expressiontype = EXPRESSIONTYPE_REAL
 							foundit = True
 							break
+						elif param_type == TOKEN_VARIABLE_TYPE_STRING:
+							self.expressiontype = EXPRESSIONTYPE_STRING
+							foundit = True
+							break
 			if not foundit:
 				if not parentProcFuncHeading is None:
 					if self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
@@ -318,6 +359,8 @@ class AST():
 										raise ValueError("Cannot assign real value as return type to function " + parentProcFuncHeading.name)
 							elif parentProcFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_REAL:
 								self.expressiontype = EXPRESSIONTYPE_REAL
+							elif parentProcFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_STRING:
+								self.expressiontype = EXPRESSIONTYPE_STRING
 							else: # pragma: no cover
 								raise ValueError("Invalid return type from function + " + parentProcFuncHeading.name)
 
@@ -333,6 +376,8 @@ class AST():
 									self.expressiontype = EXPRESSIONTYPE_INT
 								elif localvar.token.type == TOKEN_VARIABLE_TYPE_REAL:
 									self.expressiontype = EXPRESSIONTYPE_REAL
+								elif localvar.token.type == TOKEN_VARIABLE_TYPE_STRING:
+									self.expressiontype = EXPRESSIONTYPE_STRING
 								break
 
 			if foundit == False:
@@ -343,24 +388,28 @@ class AST():
 					self.expressiontype = EXPRESSIONTYPE_INT
 				elif myvar.type == asm_funcs.SYMBOL_REAL:
 					self.expressiontype = EXPRESSIONTYPE_REAL
+				elif myvar.type == asm_funcs.SYMBOL_STRING:
+					self.expressiontype = EXPRESSIONTYPE_STRING
 				elif myvar.type == asm_funcs.SYMBOL_FUNCTION:
 					if myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
 						self.expressiontype = EXPRESSIONTYPE_INT
 					elif myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_REAL:
 						self.expressiontype = EXPRESSIONTYPE_REAL
+					elif myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_STRING:
+						self.expressiontype = EXPRESSIONTYPE_STRING
 					else: # pragma: no cover
 						raise ValueError ("Invalid Expression Type")
 		elif self.token.isRelOp():
-			if self.children[0].expressiontype not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
+			if etype0 not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type left of relational op")
-			if self.children[1].expressiontype not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
+			if etype1 not in [EXPRESSIONTYPE_INT, EXPRESSIONTYPE_REAL]: # pragma: no cover
 				raise ValueError ("Invalid type right of relational op")
-			if self.children[0].expressiontype != self.children[1].expressiontype: # pragma: no cover
+			if etype0 != etype1: # pragma: no cover
 				errstr = "Left of " + DEBUG_TOKENDISPLAY(self.token.type) + " type "
-				errstr += self.children[0].expressiontype
-				errstr += ", right has type " + self.children[1].expressiontype
+				errstr += etype0
+				errstr += ", right has type " + etype1
 				raise ValueError (errstr)
-			self.expressiontype = self.children[0].expressiontype
+			self.expressiontype = etype0
 
 	def assembleProcsAndFunctions(self, assembler):
 		if self.token.type in (TOKEN_FUNCTION, TOKEN_PROCEDURE):
@@ -700,7 +749,7 @@ class AST():
 		elif self.token.type == TOKEN_WRITELN or self.token.type == TOKEN_WRITE:
 			assembler.emitcomment(self.comment)
 			for child in self.children:
-				if child.token.type == TOKEN_STRING:
+				if child.token.type == TOKEN_STRING_LITERAL:
 					if not (child.token.value in assembler.string_literals): # pragma: no cover
 						raise ValueError ("No literal for string :" + child.token.value)
 					else:
@@ -709,6 +758,12 @@ class AST():
 						assembler.emitcode("mov rdi, " + data_name)
 						assembler.emitcode("call prtstrz")
 						assembler.emitcode("pop rdi")
+				elif child.expressiontype == EXPRESSIONTYPE_STRING:
+					child.assemble(assembler, procFuncHeadingScope)  # the string result should be in RAX
+					assembler.emitcode("push rdi")
+					assembler.emitcode("mov rdi, rax")
+					assembler.emitcode("call printstring", "imported from fredstringfunc")
+					assembler.emitcode("pop rdi")
 				elif child.expressiontype == EXPRESSIONTYPE_INT:
 					child.assemble(assembler, procFuncHeadingScope)  # the expression should be in RAX
 					assembler.emitcode("push rdi")
@@ -721,7 +776,12 @@ class AST():
 				else: # pragma: no cover
 					raise ValueError ("Do not know how to write this type.")
 			if self.token.type == TOKEN_WRITELN:
-				assembler.emitcode("call newline")
+				assembler.emitcode("call newline", "imported from nsm64")
+		elif self.token.type == TOKEN_CONCAT:
+			assembler.emitcomment(self.comment)
+			if len(self.children) < 2: # pragma: no cover
+				raise ValueError("Concat() requires 2 or more arguments.")
+
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
 			assembler.emitcomment(self.comment)
 			found_symbol = False
@@ -744,10 +804,13 @@ class AST():
 							if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
 								assembler.emitcode("MOV R11, " + symbol.label)
 								assembler.emitcode("MOV [R11], RAX")
-							else:
+							elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
 								assembler.emitcode("MOV R11, " + symbol.label)
 								assembler.emitcode("MOVDQU [R11], XMM0")
+							else: # pragma: no cover
+								raise ValueError("Invalid expressiontype")
 			if found_symbol == False:
+				# Must be a global variable or a function
 				symbol = assembler.variable_symbol_table.get(self.token.value)
 				if symbol.type == asm_funcs.SYMBOL_INTEGER:
 					self.children[0].assemble(assembler, procFuncHeadingScope) # RAX has the value
@@ -755,6 +818,20 @@ class AST():
 				elif symbol.type == asm_funcs.SYMBOL_REAL:
 					self.children[0].assemble(assembler, procFuncHeadingScope) # XMM0 has the value
 					assembler.emitcode("MOVSD [" + symbol.label + "], XMM0")
+				elif symbol.type == asm_funcs.SYMBOL_STRING:
+					# two options - first, we are assigning from a string literal.
+					# seconds, we are assigning from some other string expression.
+					child = self.children[0]
+					if child.token.type == TOKEN_STRING_LITERAL:
+						if not (child.token.value in assembler.string_literals):  # pragma: no cover
+							raise ValueError("No literal for string :" + child.token.value)
+						else:
+							data_name = assembler.string_literals[child.token.value]
+							assembler.emitcode("push rdi")
+							assembler.emitcode("mov rdi, [" + symbol.label + "]")
+							assembler.emitcode("mov rsi, " + data_name)
+							assembler.emitcode("call copyliteraltostring")
+							assembler.emitcode("pop rdi")
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					if procFuncHeadingScope is not None:
 						if self.token.value == procFuncHeadingScope.name:
@@ -810,7 +887,7 @@ class AST():
 			if found_symbol == False:
 				# Check to see if it is a global variable
 				symbol = assembler.variable_symbol_table.get(self.token.value)
-				if symbol.type == asm_funcs.SYMBOL_INTEGER:
+				if symbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_STRING]:
 					assembler.emitcode("MOV RAX, [" + symbol.label + "]")
 				elif symbol.type == asm_funcs.SYMBOL_REAL:
 					assembler.emitcode("MOVSD XMM0, [" + symbol.label + "]")
@@ -976,6 +1053,8 @@ class Tokenizer:
 					ret = Token(TOKEN_WRITELN, None)
 				elif ident == "write":
 					ret = Token(TOKEN_WRITE, None)
+				elif ident == "concat":
+					ret = Token(TOKEN_CONCAT, None)
 				elif ident == "if":
 					ret = Token(TOKEN_IF, None)
 				elif ident == "then":
@@ -998,6 +1077,8 @@ class Tokenizer:
 					ret = Token(TOKEN_VARIABLE_TYPE_INTEGER, None)
 				elif ident == "real":
 					ret = Token(TOKEN_VARIABLE_TYPE_REAL, None)
+				elif ident == "string":
+					ret = Token(TOKEN_VARIABLE_TYPE_STRING, None)
 				elif ident == "div":
 					ret = Token(TOKEN_IDIV, None)
 				else:  # assume any other identifier is a variable; if inappropriate, it will throw an error later in parsing.
@@ -1009,7 +1090,7 @@ class Tokenizer:
 				else:
 					ret = Token(TOKEN_REAL, num)
 			elif self.peek() == "'":
-				ret = Token(TOKEN_STRING, self.getStringLiteral())
+				ret = Token(TOKEN_STRING_LITERAL, self.getStringLiteral())
 			elif isSymbol(self.peek()):
 				sym = self.getSymbol()
 				# multi-character symbols we support will be
@@ -1087,8 +1168,9 @@ class Parser:
 
 
 	def parseFactor(self):
-		# <factor> ::= <integer> | <variable identifier> | <function designator> | "(" <simple expression> ")"
+		# <factor> ::= <integer> | <real> | <string> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
 		# <integer> ::= ["-"] <digit> {<digit>}
+		# <real> ::= ["-"]<digit>{digit}["."<digit>{digit}]
 		# <function designator> ::= <function identifier> <actual parameter list>
 		# <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
@@ -1121,6 +1203,8 @@ class Parser:
 					factor = self.tokenizer.getNextToken()
 				factor.value = factor.value * multby
 				ret = AST(factor)
+
+				# if we want to use the plus operator for strings, we will need to do something here
 				if isinstance(factor.value, int):
 					ret.expressiontype = EXPRESSIONTYPE_INT
 				else:
@@ -1198,9 +1282,19 @@ class Parser:
 		ret.children.append(statement)
 		return ret
 
+	def parseStringParameter(self):
+		# <string parameter> :: <string literal> | <variable identifier>
+		# <string literal> = "'" {<any character>} "'"  # note - apostrophes in string literals have to be escaped by using two apostrophes
+		# <variable identifier> ::= <identifier>
+		if self.tokenizer.peek() == "'":
+			ret = self.tokenizer.getNextToken(TOKEN_STRING_LITERAL)
+		else:
+			ret = self.tokenizer.getNextToken(TOKEN_IDENTIFIER)
+		return ret
+
 	def parseStatement(self):
 		# <statement> ::= <simple statement> | <structured statement> | <empty statement>
-		# <simple statement> ::= <assignment statement> | <write statement>   /* Fred note - write statement not in official BNF */
+		# <simple statement> ::= <assignment statement> | <write statement> | <concat statement>
 		# <assignment statement> ::= <variable identifier> ":=" <simple expression>
 		# <write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
 		# <write parameter> ::= <simple expression> | <string literal>
@@ -1226,7 +1320,7 @@ class Parser:
 				done = False
 				while not done:
 					if self.tokenizer.peek() == "'":
-						tobeprinted = AST(self.tokenizer.getNextToken(TOKEN_STRING))
+						tobeprinted = AST(self.tokenizer.getNextToken(TOKEN_STRING_LITERAL))
 					else:
 						tobeprinted = self.parseSimpleExpression()
 					ret.children.append(tobeprinted)
@@ -1235,7 +1329,20 @@ class Parser:
 					else:
 						comma = self.tokenizer.getNextToken(TOKEN_COMMA)
 				rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
-
+			elif tok.type == TOKEN_CONCAT:
+				ret = AST(tok)
+				lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+				# Need to have at least two children
+				ret.children.append(parseStringParameter)
+				comma = self.tokenizer.getNextToken(TOKEN_COMMA)
+				done = False
+				while not done:
+					ret.children.append(parseStringParameter)
+					if self.tokenizer.peek() == ")":
+						done = True
+					else:
+						comma = self.tokenizer.getNextToken(TOKEN_COMMA)
+				rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 			elif tok.type == TOKEN_IDENTIFIER:
 				if self.tokenizer.peekMulti(2) == ":=":
 					# we are assigning here
@@ -1259,8 +1366,6 @@ class Parser:
 
 
 			else:
-				# self.raiseParseError("Unexpected Statement: " + DEBUG_TOKENDISPLAY(tok.type))
-			    # roll the parser back
 				self.tokenizer.curPos = startpos
 				ret = AST(Token(TOKEN_NOOP, None))
 
@@ -1290,27 +1395,28 @@ class Parser:
 
 
 	def parseVariableDeclarations(self):
-		# variable declaration part ::= "var" <variable declaration> ";" {<variable declaration> ";"}
-		# variable declaration = <identifier> ":" <type>       # Fred note - only handling one identifier at a time, not a sequence
-		# <type> ::= "integer"                                 # Fred note - only handling integers at this point
+		# <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
+		# <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
+		# <type> ::= "integer" | "real" | "string"
 		ret = AST(self.tokenizer.getNextToken(TOKEN_VAR))
 		done = False
 		while not done:
 			# I do not know how to recognize the end of the variable section without looking ahead
 			# to the next section, which is either <procedure and function declaration part> or
 			# the <statement part>.  <statement part> starts with "begin".
-			# <procedure and function declaration part> starts with "function" now. (procedures allowed later)
-			# So, we are done when the next 6 characters are BEGIN plus whitespace.
-			# There likely is a better way to do this.
+			# <procedure and function declaration part> starts with "function" or "procedure."
+			# So, we are done when the next 6 characters are BEGIN/FUNCTION/PROCEDURE plus whitespace.
 			if self.tokenizer.peekMatchStringAndSpace("begin"):
 				done = True
 			elif self.tokenizer.peekMatchStringAndSpace("function"):
+				done = True
+			elif self.tokenizer.peekMatchStringAndSpace("procedure"):
 				done = True
 			else:
 				ident_token = self.tokenizer.getNextToken(TOKEN_IDENTIFIER)
 				colon_token = self.tokenizer.getNextToken(TOKEN_COLON)
 				type_token = self.tokenizer.getNextToken()
-				if type_token.type not in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]: # pragma: no cover
+				if type_token.type not in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL, TOKEN_VARIABLE_TYPE_STRING]: # pragma: no cover
 					self.raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY(type_token.type))
 				semi_token = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
@@ -1460,7 +1566,7 @@ class Parser:
 		self.AST.find_variable_declarations(self.assembler)
 		self.AST.static_type_check(self.assembler)
 
-
+		self.assembler.setup_macros()
 		self.assembler.setup_bss()
 		self.assembler.setup_data()
 		self.assembler.setup_text()

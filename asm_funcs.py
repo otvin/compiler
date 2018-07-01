@@ -6,8 +6,10 @@ SYMBOL_INTEGER = 2
 SYMBOL_INTEGER_PTR = 3
 SYMBOL_REAL = 4
 SYMBOL_REAL_PTR = 5
+SYMBOL_STRING = 6
+SYMBOL_STRING_PTR = 7
 
-DEBUG_SYMBOLDISPLAY = ["FUNCTION", "PROCEDURE", "INT", "INTPTR", "REAL", "REALPTR"]
+DEBUG_SYMBOLDISPLAY = ["FUNCTION", "PROCEDURE", "INT", "INTPTR", "REAL", "REALPTR", "STRING", "STRINGPTR"]
 
 def intParameterPositionToRegister(pos):
 	# First six integer parameters to functions are stored in registers.
@@ -69,7 +71,7 @@ class SymbolData:
 		self.procfuncheading = procFuncHeading
 
 	def isPointer(self):
-		if self.type in [SYMBOL_INTEGER_PTR, SYMBOL_REAL_PTR]:
+		if self.type in [SYMBOL_INTEGER_PTR, SYMBOL_REAL_PTR, SYMBOL_STRING_PTR]:
 			return True
 		else:
 			return False
@@ -87,7 +89,7 @@ class SymbolTable:
 	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
 		if self.exists(symbolname): # pragma: no cover
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
-		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_PROCEDURE, SYMBOL_REAL, SYMBOL_INTEGER, SYMBOL_REAL_PTR, SYMBOL_INTEGER_PTR]: # pragma: no cover
+		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_PROCEDURE, SYMBOL_REAL, SYMBOL_INTEGER, SYMBOL_REAL_PTR, SYMBOL_INTEGER_PTR, SYMBOL_STRING, SYMBOL_STRING_PTR]: # pragma: no cover
 			raise ValueError ("Invalid symbol type")
 		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
 
@@ -221,12 +223,15 @@ class Assembler:
 			self.emitcode("POP RDI")
 
 
+	def setup_macros(self):
+		self.emitcode('%include "fredstringmacro.inc"')
+
 	def setup_bss(self):
 		if len(self.variable_symbol_table.symbollist()) > 0:
 			self.emitsection("section .bss")
 			for key in self.variable_symbol_table.symbollist():
 				symbol = self.variable_symbol_table.get(key)
-				if symbol.type in [SYMBOL_INTEGER, SYMBOL_REAL]:
+				if symbol.type in [SYMBOL_INTEGER, SYMBOL_REAL, SYMBOL_STRING]:
 					self.emitcode(symbol.label + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int or float
 
 
@@ -241,19 +246,44 @@ class Assembler:
 
 	def setup_text(self):
 		self.emitcode("global main")
-		self.emitcode("extern prtdec")  # imported from nsm64
-		self.emitcode("extern prtdbl")  # imported from nsm64
-		self.emitcode("extern prtstrz") # imported from nsm64
-		self.emitcode("extern newline") # imported from nsm64
-		self.emitcode("extern exit")	# imported from nsm64
+		self.emitcode("extern prtdec","imported from nsm64")
+		self.emitcode("extern prtdbl","imported from nsm64")
+		self.emitcode("extern prtstrz","imported from nsm64")
+		self.emitcode("extern newline","imported from nsm64")
+		self.emitcode("extern exit","imported from nsm64")
 
-		self.emitcode("extern newstring") # imported from fredstringfunc
+		self.emitcode("extern newstring","imported from fredstringfunc")
+		self.emitcode("extern freestring","imported from fredstringfunc")
+		self.emitcode("extern copystring","imported from fredstringfunc")
+		self.emitcode("extern printstring","imported from fredstringfunc")
+		self.emitcode("extern stringlength","imported from fredstringfunc")
+		self.emitcode("extern literaltostring","imported from fredstringfunc")
+		self.emitcode("extern stringconcatstring","imported from fredstringfunc")
+		self.emitcode("extern stringconcatliteral","imported from fredstringfunc")
+		self.emitcode("extern copystring", "imported from fredstringfunc")
+		self.emitcode("extern copyliteraltostring", "imported from fredstringfunc")
+
 		self.emitsection("section .text")
 
 	def setup_start(self):
 		self.emitlabel("main")
+		# preserve the stack pointer
+		self.emitcode("push rsp")
+		# need to init all the global string variables
+		for key in self.variable_symbol_table.symbollist():
+			symbol = self.variable_symbol_table.get(key)
+			if symbol.type == SYMBOL_STRING:
+				self.emitcode("call newstring","initialize String variable " + key)
+				self.emitcode("mov [" + symbol.label + "], rax")
 
 	def emit_terminate(self):
+		# need to free all the global string variables
+		for key in self.variable_symbol_table.symbollist():
+			symbol = self.variable_symbol_table.get(key)
+			if symbol.type == SYMBOL_STRING:
+				self.emitcode("mov rdi, [" + symbol.label + "]", "free String variable " + key)
+				self.emitcode("call freestring")
+		self.emitcode("pop rsp")
 		self.emitcode("call exit")
 
 
