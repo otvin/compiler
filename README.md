@@ -138,4 +138,4 @@ Ruslan Spivak "Let's Build a Simple Interpreter" - https://ruslanspivak.com/lsba
 
 I have referenced multiple BNF for Pascal but the one I settled on is here: http://www.fit.vutbr.cz/study/courses/APR/public/ebnf.html - I used this as the starting point and modified it for my grammar.
 
-The nasm64.asm file that I included was found here: https://forum.nasm.us/index.php?topic=2062.0 - the GPL license information is left intact in that file.
+The nsm64.asm file that I included was found here: https://forum.nasm.us/index.php?topic=2062.0 - the GPL license information is left intact in that file.

@@ -319,7 +319,6 @@ copystring:
 ;----------
 
 copyliteraltostring:
-    push RDI
 
     ; RCX - used to walk the literal
     ; RDX - used to walk the String
@@ -343,8 +342,7 @@ copyliteraltostring:
     inc rcx
     jmp .loop
 .done:
-    mov byte [rax], r9b ; put the size of the string as the first byte of RAX.
-    pop rdi
+    mov byte [rdi], r9b ; put the size of the string as the first byte of RAX.
     mov rax, rdi
     ret
 .err1:

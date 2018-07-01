@@ -828,10 +828,22 @@ class AST():
 						else:
 							data_name = assembler.string_literals[child.token.value]
 							assembler.emitcode("push rdi")
+							assembler.emitcode("push rsi")
 							assembler.emitcode("mov rdi, [" + symbol.label + "]")
 							assembler.emitcode("mov rsi, " + data_name)
 							assembler.emitcode("call copyliteraltostring")
+							assembler.emitcode("pop rsi")
 							assembler.emitcode("pop rdi")
+					else:
+						child.assemble(assembler, procFuncHeadingScope)  # Sets RAX pointing to the result
+						assembler.emitcode("push rdi")
+						assembler.emitcode("push rsi")
+						assembler.emitcode("mov rdi, [" + symbol.label + "]")
+						assembler.emitcode("mov rsi, rax")
+						assembler.emitcode("call copystring")
+						assembler.emitcode("pop rsi")
+						assembler.emitcode("pop rdi")
+
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					if procFuncHeadingScope is not None:
 						if self.token.value == procFuncHeadingScope.name:
