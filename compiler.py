@@ -802,7 +802,7 @@ class AST():
 					child.assemble(assembler, procFuncHeadingScope)  # rax points to result
 					assembler.emitcode("pop r11")  # now r11 conains the temp string
 					assembler.emitcode("push r11")  # preserve it
-					assembler.emit_copystring("[r11]", "[rax]")
+					assembler.emit_copystring("r11", "rax")
 				assembler.emitcode("pop rax")
 				assembler.emitcode("push rax")
 
@@ -815,7 +815,7 @@ class AST():
 						child.assemble(assembler, procFuncHeadingScope)  # rax points to result
 						assembler.emitcode("pop r11")  # now r11 conains the temp string
 						assembler.emitcode("push r11")  # preserve it
-						assembler.emit_stringconcatstring("[r11]", "[rax]")
+						assembler.emit_stringconcatstring("r11", "rax")
 					assembler.emitcode("pop rax")
 					assembler.emitcode("push rax")
 				assembler.emitcode("pop rax") # now rax has the string that is returned from the Concat
