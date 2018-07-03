@@ -223,6 +223,51 @@ class Assembler:
 			self.emitcode("POP RDI")
 
 
+	def emit_copyliteraltostring(self, stringaddress, literalvalue):
+		if not (literalvalue in self.string_literals):  # pragma: no cover
+			raise ValueError("No literal for string :" + literalvalue)
+		else:
+			data_name = self.string_literals[literalvalue]
+			self.emitcode("push rdi")
+			self.emitcode("push rsi")
+			self.emitcode("mov rdi, " + stringaddress)
+			self.emitcode("mov rsi, " + data_name)
+			self.emitcode("call copyliteraltostring")
+			self.emitcode("pop rsi")
+			self.emitcode("pop rdi")
+
+	def emit_copystring(self, destinationstringaddress, sourcestringaddress):
+		self.emitcode("push rdi")
+		self.emitcode("push rsi")
+		self.emitcode("mov rdi, " + destinationstringaddress)
+		self.emitcode("mov rsi, " + sourcestringaddress)
+		self.emitcode("call copystring")
+		self.emitcode("pop rsi")
+		self.emitcode("pop rdi")
+
+	def emit_stringconcatliteral(self, stringaddress, literalvalue):
+		if not (literalvalue in self.string_literals):  # pragma: no cover
+			raise ValueError("No literal for string :" + literalvalue)
+		else:
+			data_name = self.string_literals[literalvalue]
+			self.emitcode("push rdi")
+			self.emitcode("push rsi")
+			self.emitcode("mov rdi, " + stringaddress)
+			self.emitcode("mov rsi, " + data_name)
+			self.emitcode("call stringconcatliteral")
+			self.emitcode("pop rsi")
+			self.emitcode("pop rdi")
+
+	def emit_stringconcatstring(self, destinationstringaddress, sourcestringaddress):
+		self.emitcode("push rdi")
+		self.emitcode("push rsi")
+		self.emitcode("mov rdi, " + destinationstringaddress)
+		self.emitcode("mov rsi, " + sourcestringaddress)
+		self.emitcode("call stringconcatstring")
+		self.emitcode("pop rsi")
+		self.emitcode("pop rdi")
+
+
 	def setup_macros(self):
 		self.emitcode('%include "fredstringmacro.inc"')
 
@@ -267,8 +312,6 @@ class Assembler:
 
 	def setup_start(self):
 		self.emitlabel("main")
-		# preserve the stack pointer
-		self.emitcode("push rsp")
 		# need to init all the global string variables
 		for key in self.variable_symbol_table.symbollist():
 			symbol = self.variable_symbol_table.get(key)
@@ -283,7 +326,6 @@ class Assembler:
 			if symbol.type == SYMBOL_STRING:
 				self.emitcode("mov rdi, [" + symbol.label + "]", "free String variable " + key)
 				self.emitcode("call freestring")
-		self.emitcode("pop rsp")
 		self.emitcode("call exit")
 
 

@@ -107,20 +107,17 @@ def isSymbol(char):
 # <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
 # <statement sequence> ::= <statement> | <statement> ';' <statement sequence>
 # <statement> ::= <simple statement> | <structured statement> | <empty statement>
-# <simple statement> ::= <assignment statement> | <write statement> | <concat statement> /* Fred note - concat / write statement not in official BNF */
+# <simple statement> ::= <assignment statement> | <procedure statement>
+# <procedure statement> ::= <procedure identifier> [<actual parameter list>]
 # <assignment statement> ::= <variable identifier> ":=" <simple expression>
-# <write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
-# <write parameter> ::= <simple expression> | <string literal>
-# <concat statement> ::= "concat" "(" <string parameter> "," <string parameter> {"," <string parameter>} ")"
-# <string parameter> :: <string literal> | <variable identifier>
 # <structured statement> ::= <compound statement> | <while statement> | <if statement>
 # <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
 # <while statement> ::= "while" <expression> "do" <statement>
 # <expression> ::= <simple expression> [<relational operator> <simple expression>]
-# <simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> */
+# <simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> and <real>*/
 # <term> ::= <factor> { <multiplication operator> <factor> }
 # <factor> ::= <integer> | <real> | <string> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
-# <function designator> ::= <function identifier> <actual parameter list>
+# <function designator> ::= <function identifier> [<actual parameter list>]
 # <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
 # <string literal> = "'" {<any character>} "'"  # note - apostrophes in string literals have to be escaped by using two apostrophes
@@ -134,6 +131,14 @@ def isSymbol(char):
 # <multiplication operator> ::= "*" | "/", "DIV"
 # <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 
+# These aren't technically in the BNF.  Write/Writeln are just procedures.  Concat is just a function.  So these
+# aren't needed because the BNF covers them, however I wrote them out for my own benefit.
+# <write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
+# <write parameter> ::= <simple expression> | <string literal>
+# <concat statement> ::= "concat" "(" <string parameter> "," <string parameter> {"," <string parameter>} ")"
+# <string parameter> :: <simple expression> | <string literal>  /* simple expression here must be of string type */
+
+
 class Token:
 	def __init__(self, type, value):
 		self.type = type
@@ -141,6 +146,12 @@ class Token:
 
 	def isRelOp(self):
 		if self.type in [TOKEN_RELOP_EQUALS, TOKEN_RELOP_GREATER, TOKEN_RELOP_LESS, TOKEN_RELOP_GREATEREQ, TOKEN_RELOP_LESSEQ, TOKEN_RELOP_NOTEQ]:
+			return True
+		else:
+			return False
+
+	def isReservedFunction(self):
+		if self.type == TOKEN_CONCAT:
 			return True
 		else:
 			return False
@@ -781,7 +792,33 @@ class AST():
 			assembler.emitcomment(self.comment)
 			if len(self.children) < 2: # pragma: no cover
 				raise ValueError("Concat() requires 2 or more arguments.")
+			else:
+				assembler.emitcode("NEWSTACKSTRING")
+				assembler.emitcode("push rax")
+				child = self.children[0]
+				if child.token.type == TOKEN_STRING_LITERAL:
+					assembler.emit_copyliteraltostring("rax", child.token.value)
+				else:
+					child.assemble(assembler, procFuncHeadingScope)  # rax points to result
+					assembler.emitcode("pop r11")  # now r11 conains the temp string
+					assembler.emitcode("push r11")  # preserve it
+					assembler.emit_copystring("[r11]", "[rax]")
+				assembler.emitcode("pop rax")
+				assembler.emitcode("push rax")
 
+				for child in self.children[1:]:
+					# always make sure that at the start of each iteration of the loop, rax
+					# contains the address of the temp string
+					if child.token.type == TOKEN_STRING_LITERAL:
+						assembler.emit_stringconcatliteral("rax", child.token.value)
+					else:
+						child.assemble(assembler, procFuncHeadingScope)  # rax points to result
+						assembler.emitcode("pop r11")  # now r11 conains the temp string
+						assembler.emitcode("push r11")  # preserve it
+						assembler.emit_stringconcatstring("[r11]", "[rax]")
+					assembler.emitcode("pop rax")
+					assembler.emitcode("push rax")
+				assembler.emitcode("pop rax") # now rax has the string that is returned from the Concat
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
 			assembler.emitcomment(self.comment)
 			found_symbol = False
@@ -823,27 +860,10 @@ class AST():
 					# seconds, we are assigning from some other string expression.
 					child = self.children[0]
 					if child.token.type == TOKEN_STRING_LITERAL:
-						if not (child.token.value in assembler.string_literals):  # pragma: no cover
-							raise ValueError("No literal for string :" + child.token.value)
-						else:
-							data_name = assembler.string_literals[child.token.value]
-							assembler.emitcode("push rdi")
-							assembler.emitcode("push rsi")
-							assembler.emitcode("mov rdi, [" + symbol.label + "]")
-							assembler.emitcode("mov rsi, " + data_name)
-							assembler.emitcode("call copyliteraltostring")
-							assembler.emitcode("pop rsi")
-							assembler.emitcode("pop rdi")
+						assembler.emit_copyliteraltostring("[" + symbol.label + "]", child.token.value)
 					else:
 						child.assemble(assembler, procFuncHeadingScope)  # Sets RAX pointing to the result
-						assembler.emitcode("push rdi")
-						assembler.emitcode("push rsi")
-						assembler.emitcode("mov rdi, [" + symbol.label + "]")
-						assembler.emitcode("mov rsi, rax")
-						assembler.emitcode("call copystring")
-						assembler.emitcode("pop rsi")
-						assembler.emitcode("pop rdi")
-
+						assembler.emit_copystring("[" + symbol.label + "]", "rax")
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					if procFuncHeadingScope is not None:
 						if self.token.value == procFuncHeadingScope.name:
@@ -1177,7 +1197,27 @@ class Parser:
 			errstr += "Immediately prior to: " + self.tokenizer.peekMulti(10)
 		raise ValueError(errstr)
 
-
+	def parseReservedFunction(self, functoken):
+		# Concat is a function, so is covered in the <function designator> BNF, however I have it here for my benefit.
+		# <concat statement> ::= "concat" "(" <string parameter> "," <string parameter> {"," <string parameter>} ")"
+		# <string parameter> :: <string literal> | <variable identifier>
+		if functoken.type == TOKEN_CONCAT:
+			ret = AST(functoken)
+			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
+			# Need to have at least two children
+			ret.children.append(self.parseStringParameter())
+			comma = self.tokenizer.getNextToken(TOKEN_COMMA)
+			done = False
+			while not done:
+				ret.children.append(self.parseStringParameter())
+				if self.tokenizer.peek() == ")":
+					done = True
+				else:
+					comma = self.tokenizer.getNextToken(TOKEN_COMMA)
+			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
+		else: # pragma: no cover
+			raise ValueError("Invalid Reserved Function " + DEBUG_TOKENDISPLAY(functoken))
+		return ret
 
 	def parseFactor(self):
 		# <factor> ::= <integer> | <real> | <string> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
@@ -1186,6 +1226,7 @@ class Parser:
 		# <function designator> ::= <function identifier> <actual parameter list>
 		# <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
+
 		if self.tokenizer.peek() == "(":
 			# parens do not go in the AST
 			lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
@@ -1193,14 +1234,16 @@ class Parser:
 			rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 		else:
 			factor = self.tokenizer.getNextToken()
-			if factor.type == TOKEN_IDENTIFIER:
+			if factor.isReservedFunction():
+				ret = self.parseReservedFunction(factor)
+			elif factor.type == TOKEN_IDENTIFIER:
 				# we are evaluating here
 				factor.type = TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION
 				ret = AST(factor)
 
 				if self.tokenizer.peek() == "(":
 					# this is a function invocation - but at this point we cannot tell if it is
-					# a procedure invocation.  If is is a procedure invocation we will error later.
+					# a valid function.  Invalid invocations will error later.
 					lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
 					ret.children.append(self.parseSimpleExpression())
 					while self.tokenizer.peek() == ",":
@@ -1209,18 +1252,17 @@ class Parser:
 					rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 
 			else:
-				multby = 1  # will set this negative if it's a negative number
 				if factor.type == TOKEN_MINUS:
-					multby = -1
 					factor = self.tokenizer.getNextToken()
-				factor.value = factor.value * multby
+					factor.value = -1 * factor.value
 				ret = AST(factor)
 
-				# if we want to use the plus operator for strings, we will need to do something here
 				if isinstance(factor.value, int):
 					ret.expressiontype = EXPRESSIONTYPE_INT
-				else:
+				elif isinstance(factor.value, float):
 					ret.expressiontype = EXPRESSIONTYPE_REAL
+				else:
+					ret.expressiontype = EXPRESSIONTYPE_STRING
 
 		return ret
 
@@ -1295,24 +1337,28 @@ class Parser:
 		return ret
 
 	def parseStringParameter(self):
-		# <string parameter> :: <string literal> | <variable identifier>
+		# <string parameter> :: <simple expression> | <string literal>
 		# <string literal> = "'" {<any character>} "'"  # note - apostrophes in string literals have to be escaped by using two apostrophes
 		# <variable identifier> ::= <identifier>
 		if self.tokenizer.peek() == "'":
-			ret = self.tokenizer.getNextToken(TOKEN_STRING_LITERAL)
+			ret = AST(self.tokenizer.getNextToken(TOKEN_STRING_LITERAL))
 		else:
-			ret = self.tokenizer.getNextToken(TOKEN_IDENTIFIER)
+			ret = self.parseSimpleExpression()
 		return ret
 
 	def parseStatement(self):
 		# <statement> ::= <simple statement> | <structured statement> | <empty statement>
-		# <simple statement> ::= <assignment statement> | <write statement> | <concat statement>
+		# <simple statement> ::= <assignment statement> | <procedure statement>
 		# <assignment statement> ::= <variable identifier> ":=" <simple expression>
-		# <write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
-		# <write parameter> ::= <simple expression> | <string literal>
+		# <procedure statement> ::= <procedure identifier> [<actual parameter list>]
+		# <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 		# <structured statement> ::= <compound statement> | <while statement> | <if statement>
 		# <if statement> ::= if <expression> then <statement>
 		# <while statement> ::= "while" <expression> "do" <statement>
+
+		# write/writeln are just system-defined procedures, so the BNF above defines them, but I find this helpful
+		# <write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
+		# <write parameter> ::= <simple expression> | <string literal>
 
 		# if next token is begin then it is a structured => compound statement
 		if self.tokenizer.peekMatchStringAndSpace("begin"):
@@ -1341,20 +1387,6 @@ class Parser:
 					else:
 						comma = self.tokenizer.getNextToken(TOKEN_COMMA)
 				rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
-			elif tok.type == TOKEN_CONCAT:
-				ret = AST(tok)
-				lparen = self.tokenizer.getNextToken(TOKEN_LPAREN)
-				# Need to have at least two children
-				ret.children.append(parseStringParameter)
-				comma = self.tokenizer.getNextToken(TOKEN_COMMA)
-				done = False
-				while not done:
-					ret.children.append(parseStringParameter)
-					if self.tokenizer.peek() == ")":
-						done = True
-					else:
-						comma = self.tokenizer.getNextToken(TOKEN_COMMA)
-				rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
 			elif tok.type == TOKEN_IDENTIFIER:
 				if self.tokenizer.peekMulti(2) == ":=":
 					# we are assigning here
@@ -1375,8 +1407,6 @@ class Parser:
 							comma = self.tokenizer.getNextToken(TOKEN_COMMA)
 							ret.children.append(self.parseSimpleExpression())
 						rparen = self.tokenizer.getNextToken(TOKEN_RPAREN)
-
-
 			else:
 				self.tokenizer.curPos = startpos
 				ret = AST(Token(TOKEN_NOOP, None))
