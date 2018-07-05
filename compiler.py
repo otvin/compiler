@@ -69,8 +69,8 @@ EXPRESSIONTYPE_INT = 0
 EXPRESSIONTYPE_REAL = 1
 EXPRESSIONTYPE_STRING = 2
 
-def DEBUG_TOKENDISPLAY(token): # pragma: no cover
-	return token[1]
+def DEBUG_TOKENDISPLAY(tokentype): # pragma: no cover
+	return tokentype[1]
 
 
 # helper functions
@@ -157,7 +157,10 @@ class Token:
 			return False
 
 	def debugprint(self): # pragma: no cover
-		return (DEBUG_TOKENDISPLAY(self.type) + ":" + str(self.value))
+		ret = DEBUG_TOKENDISPLAY(self.type)
+		if not (self.value is None):
+			ret += ":" + str(self.value)
+		return (ret)
 
 class ProcFuncParameter:
 	def __init__(self, name, type, byref):
@@ -232,14 +235,14 @@ class AST():
 		self.expressiontype = None # will be EXPRESSIONTYPE_INT or EXPRESSIONTYPE_REAL
 		self.children = []
 
-	def rpn_print(self): # pragma: no cover
+	def rpn_print(self, level = 0): # pragma: no cover
 		for x in self.children:
-			x.rpn_print()
-		typestr = ""
+			x.rpn_print(level + 1)
+		typestr = "" + (level * " ")
 		if self.expressiontype == EXPRESSIONTYPE_INT:
-			typestr = "Type: Integer |"
+			typestr += "Expressiontype: Integer |"
 		elif self.expressiontype == EXPRESSIONTYPE_REAL:
-			typestr = "Type: Real |"
+			typestr += "Expressiontype: Real |"
 		print(typestr + self.token.debugprint())
 
 	def find_string_literals(self, assembler):
@@ -258,7 +261,9 @@ class AST():
 			for child in self.children:
 				child.find_real_literals(assembler)
 
-	def find_variable_declarations(self, assembler):
+	def find_global_variable_declarations(self, assembler):
+		# local variables are not part of the main AST.  They are attached to the procFuncHeading
+		# as the localVariableAST.
 		if self.token.type == TOKEN_VARIABLE_TYPE_INTEGER:
 			if self.token.value in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError ("Variable redefined: " + self.token.value)
@@ -286,7 +291,7 @@ class AST():
 				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_PROCEDURE, assembler.generate_variable_name("proc"), self.procFuncHeading)
 		else:
 			for child in self.children:
-				child.find_variable_declarations(assembler)
+				child.find_global_variable_declarations(assembler)
 
 	def static_type_check(self, assembler, parentProcFuncHeading = None):
 		for child in self.children:
@@ -787,7 +792,9 @@ class AST():
 				else: # pragma: no cover
 					raise ValueError ("Do not know how to write this type.")
 			if self.token.type == TOKEN_WRITELN:
+				assembler.emitcode("push rdi")
 				assembler.emitcode("call newline", "imported from nsm64")
+				assembler.emitcode("pop rdi")
 		elif self.token.type == TOKEN_CONCAT:
 			assembler.emitcomment(self.comment)
 			if len(self.children) < 2: # pragma: no cover
@@ -1078,7 +1085,7 @@ class Tokenizer:
 			if self.peek().isalpha():
 				ident = self.getIdentifier().lower()
 				if ident == "begin":
-					ret = Token(TOKEN_BEGIN, None)
+					ret = Token(TOKEN_BEGIN, False)  # The value of a "BEGIN" token is True/False whether or not it is "main."
 				elif ident == "end":
 					ret = Token(TOKEN_END, None)
 				elif ident == "writeln":
@@ -1581,6 +1588,10 @@ class Parser:
 			procfunc_declarations = None
 
 		statementPart = self.parseStatementPart()
+		if statementPart.token.type == TOKEN_BEGIN:
+			statementPart.token.value = True  # set the "main" begin to have True as its value
+		else: # pragma: no cover
+			raiseParseError("Unexpected token to begin main block, expected BEGIN, received " + DEBUG_TOKENDISPLAY(statementpart.token.type))
 		period = self.tokenizer.getNextToken(TOKEN_PERIOD)
 		if self.tokenizer.peek() != "": # pragma: no cover
 			raiseParseError("Unexpected character after period " + self.tokenizer.peek())
@@ -1605,7 +1616,7 @@ class Parser:
 		self.assembler = asm_funcs.Assembler(filename)
 		self.AST.find_string_literals(self.assembler)
 		self.AST.find_real_literals(self.assembler)
-		self.AST.find_variable_declarations(self.assembler)
+		self.AST.find_global_variable_declarations(self.assembler)
 		self.AST.static_type_check(self.assembler)
 
 		self.assembler.setup_macros()
@@ -1620,6 +1631,7 @@ class Parser:
 
 		self.assembler.emit_terminate()
 		self.assembler.cleanup()
+		# self.AST.rpn_print()
 
 
 def main(): # pragma: no cover
