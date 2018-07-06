@@ -106,6 +106,10 @@ Compiler does not provide a good error message when invoking a procedure as a pa
 
 Compiler does not error when invoking a function and ignoring the return value (basically treating a function like a procedure call).  This is not valid Pascal.  
 
+## Design limitation:
+
+Many symbols are generated with the word 'fred' plus additional prefix.  It is quite possible to generate a symbol collision and get an unexpected "variable redefined" error if you use lots of variables that begin with 'fred.'  So, don't do that.
+
 ### Not yet tested:
 
 Have not tested ByRef parameters with Procedures

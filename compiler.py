@@ -272,6 +272,19 @@ class AST():
 						return ret
 			return None
 
+	def find_procfunc_concats(self, localvarbytesneeded, procFuncHeading):
+		if self.token.type == TOKEN_CONCAT:
+			localvarbytesneeded += 8
+			# concats do not have brackets around value the way local variables do, because
+			# sometimes we use same assemble() code when it is a global var,
+			# so we always add the brackets when assembling.
+			self.token.value = 'fredconcat' + str(localvarbytesneeded)  # just needs to be unique
+			procFuncHeading.localvariableSymbolTable.insert(self.token.value, asm_funcs.SYMBOL_CONCAT, 'RBP - ' + str(localvarbytesneeded)) # RBP offset will come later
+		for child in self.children:
+			localvarbytesneeded = child.find_procfunc_concats(localvarbytesneeded, procFuncHeading)
+
+		return localvarbytesneeded
+
 
 	def find_concats(self, assembler):
 		# concat needs stack space allocated for each invocation.  If we add other reserved
@@ -520,11 +533,14 @@ class AST():
 							symboltype = asm_funcs.SYMBOL_REAL
 						self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, '[RBP - ' + str(localvarbytesneeded) + ']')
 					else: # pragma: no cover
-						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY(i.type))
+						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY(i.token.type))
+
+			localvarbytesneeded = self.find_procfunc_concats(localvarbytesneeded, self.procFuncHeading)
+
+
 			if localvarbytesneeded > 0:
 				assembler.emitcode("MOV RBP, RSP", "save stack pointer")
 				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local variable storage")
-				assembler.emitcode('AND RSP, QWORD -16' , '16-byte align stack pointer')
 				for i in self.procFuncHeading.parameters:
 					paramlabel = self.procFuncHeading.localvariableSymbolTable.get(i.name).label
 					register = self.procFuncHeading.getRegisterForParameterName(i.name)
@@ -532,6 +548,15 @@ class AST():
 						assembler.emitcode("MOV " + paramlabel + ', ' + register, 'param: ' + i.name)
 					else:
 						assembler.emitcode("MOVSD " + paramlabel + ', ' + register, 'param: ' + i.name)
+
+				# setup the concats
+				for key in self.procFuncHeading.localvariableSymbolTable.symbollist():
+					symbol = self.procFuncHeading.localvariableSymbolTable.get(key)
+					if symbol.type == asm_funcs.SYMBOL_CONCAT:
+						assembler.emitcode("NEWSTACKSTRING")
+						assembler.emitcode("mov [" + symbol.label + "], rax")
+
+				assembler.emitcode('AND RSP, QWORD -16', '16-byte align stack pointer')
 
 			self.children[0].assemble(assembler, procfuncsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
 
@@ -825,7 +850,18 @@ class AST():
 			if len(self.children) < 2: # pragma: no cover
 				raise ValueError("Concat() requires 2 or more arguments.")
 			else:
-				assembler.emitcode("mov rax, [" + self.token.value + "]")
+				if not(procFuncHeadingScope is None):
+					# concats are ALWAYS local - so if there is a ProcFuncHeadingScope, then the concat IS
+					# local, so we do not have to track that we found it and then back out to the global scope
+					# to check
+					if not(procFuncHeadingScope.localvariableSymbolTable is None):
+						label = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label
+					else: # pragma: no cover
+						raise ValueError("Error: Concat not properly found/allocated")
+				else:
+					label = self.token.value
+
+				assembler.emitcode("mov rax, [" + label + "]")
 				assembler.emitcode("push rax")
 				child = self.children[0]
 				if child.token.type == TOKEN_STRING_LITERAL:
