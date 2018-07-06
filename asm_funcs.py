@@ -8,8 +8,9 @@ SYMBOL_REAL = 4
 SYMBOL_REAL_PTR = 5
 SYMBOL_STRING = 6
 SYMBOL_STRING_PTR = 7
+SYMBOL_CONCAT = 8
 
-DEBUG_SYMBOLDISPLAY = ["FUNCTION", "PROCEDURE", "INT", "INTPTR", "REAL", "REALPTR", "STRING", "STRINGPTR"]
+DEBUG_SYMBOLDISPLAY = ["FUNCTION", "PROCEDURE", "INT", "INTPTR", "REAL", "REALPTR", "STRING", "STRINGPTR", "CONCAT"]
 
 def intParameterPositionToRegister(pos):
 	# First six integer parameters to functions are stored in registers.
@@ -89,7 +90,7 @@ class SymbolTable:
 	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
 		if self.exists(symbolname): # pragma: no cover
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
-		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_PROCEDURE, SYMBOL_REAL, SYMBOL_INTEGER, SYMBOL_REAL_PTR, SYMBOL_INTEGER_PTR, SYMBOL_STRING, SYMBOL_STRING_PTR]: # pragma: no cover
+		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_PROCEDURE, SYMBOL_REAL, SYMBOL_INTEGER, SYMBOL_REAL_PTR, SYMBOL_INTEGER_PTR, SYMBOL_STRING, SYMBOL_STRING_PTR, SYMBOL_CONCAT]: # pragma: no cover
 			raise ValueError ("Invalid symbol type")
 		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
 
@@ -277,8 +278,9 @@ class Assembler:
 			for key in self.variable_symbol_table.symbollist():
 				symbol = self.variable_symbol_table.get(key)
 				if symbol.type in [SYMBOL_INTEGER, SYMBOL_REAL, SYMBOL_STRING]:
-					self.emitcode(symbol.label + " resq 1\t; global variable " + key)  # 8-byte / 64-bit int or float
-
+					self.emitcode(symbol.label + " resq 1", "global variable " + key)  # 8-byte / 64-bit int or float
+				elif symbol.type == SYMBOL_CONCAT:
+					self.emitcode(symbol.label + " resq 1", "global concat")
 
 
 	def setup_data(self):
@@ -312,6 +314,15 @@ class Assembler:
 
 	def setup_start(self):
 		self.emitlabel("main")
+		# Before we do anything else, we are going to allocate space for any global-space CONCAT() calls.
+		# Doing anything with PUSH or POP messes up these allocations so by doing them first, I ensure there
+		# are no stack calls.  The ASM function newstring messes with the stack, so it is safer to do two trips through
+		# the symbollist.
+		for key in self.variable_symbol_table.symbollist():
+			symbol = self.variable_symbol_table.get(key)
+			if symbol.type == SYMBOL_CONCAT:
+				self.emitcode("NEWSTACKSTRING","allocate stack space for concat " + key)
+				self.emitcode("mov [" + symbol.label + "], rax")
 		# need to init all the global string variables
 		for key in self.variable_symbol_table.symbollist():
 			symbol = self.variable_symbol_table.get(key)

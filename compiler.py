@@ -261,6 +261,31 @@ class AST():
 			for child in self.children:
 				child.find_real_literals(assembler)
 
+	def find_main_begin(self):
+		if self.token.type == TOKEN_BEGIN and self.token.value == True:
+			return self
+		else:
+			for child in self.children:
+				ret = child.find_main_begin()
+				if not ret is None:
+					if ret.token.type == TOKEN_BEGIN and ret.token.value == True:
+						return ret
+			return None
+
+
+	def find_concats(self, assembler):
+		# concat needs stack space allocated for each invocation.  If we add other reserved
+		# functions with same requirements, we can rename this method.
+		if self.token.type == TOKEN_CONCAT:
+			concat_label = assembler.generate_variable_name("concat")
+			self.token.value = concat_label
+			assembler.variable_symbol_table.insert(concat_label, asm_funcs.SYMBOL_CONCAT, concat_label)
+
+		# concat can take the results of a concat as a parameter, so we have to look within the
+		# children of the concat as well.  Thus, cannot do an "else" here.
+		for child in self.children:
+			child.find_concats(assembler)
+
 	def find_global_variable_declarations(self, assembler):
 		# local variables are not part of the main AST.  They are attached to the procFuncHeading
 		# as the localVariableAST.
@@ -312,7 +337,7 @@ class AST():
 			self.expressiontype = EXPRESSIONTYPE_INT
 		elif self.token.type == TOKEN_REAL:
 			self.expressiontype = EXPRESSIONTYPE_REAL
-		elif self.expressiontype in [TOKEN_STRING, TOKEN_STRING_LITERAL]:
+		elif self.token.type in [TOKEN_STRING, TOKEN_STRING_LITERAL, TOKEN_CONCAT]:
 			self.expressiontype = EXPRESSIONTYPE_STRING
 		elif self.token.type == TOKEN_PLUS:
 			# validation check
@@ -800,7 +825,7 @@ class AST():
 			if len(self.children) < 2: # pragma: no cover
 				raise ValueError("Concat() requires 2 or more arguments.")
 			else:
-				assembler.emitcode("NEWSTACKSTRING")
+				assembler.emitcode("mov rax, [" + self.token.value + "]")
 				assembler.emitcode("push rax")
 				child = self.children[0]
 				if child.token.type == TOKEN_STRING_LITERAL:
@@ -1454,7 +1479,7 @@ class Parser:
 			# to the next section, which is either <procedure and function declaration part> or
 			# the <statement part>.  <statement part> starts with "begin".
 			# <procedure and function declaration part> starts with "function" or "procedure."
-			# So, we are done when the next 6 characters are BEGIN/FUNCTION/PROCEDURE plus whitespace.
+			# So, we are done when the next N characters are BEGIN/FUNCTION/PROCEDURE plus whitespace.
 			if self.tokenizer.peekMatchStringAndSpace("begin"):
 				done = True
 			elif self.tokenizer.peekMatchStringAndSpace("function"):
@@ -1617,6 +1642,10 @@ class Parser:
 		self.AST.find_string_literals(self.assembler)
 		self.AST.find_real_literals(self.assembler)
 		self.AST.find_global_variable_declarations(self.assembler)
+		# concat needs stack space allocated for each invocation.  If we add other reserved
+		# functions with same requirements, we can rename this method.
+		mainbegin = self.AST.find_main_begin()
+		mainbegin.find_concats(self.assembler)
 		self.AST.static_type_check(self.assembler)
 
 		self.assembler.setup_macros()
@@ -1631,7 +1660,6 @@ class Parser:
 
 		self.assembler.emit_terminate()
 		self.assembler.cleanup()
-		# self.AST.rpn_print()
 
 
 def main(): # pragma: no cover
