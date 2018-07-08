@@ -204,11 +204,7 @@ class Assembler:
 							if num_registers >= 6:
 								self.emitcode("PUSH R9")
 
-		# always preserve RBP
-		self.emitcode("PUSH RBP")
-
 	def restore_int_registers_after_procfunc_call(self, num_registers):
-		self.emitcode("POP RBP")
 
 		if num_registers >=6:
 			self.emitcode("POP R9")
@@ -321,7 +317,7 @@ class Assembler:
 		for key in self.variable_symbol_table.symbollist():
 			symbol = self.variable_symbol_table.get(key)
 			if symbol.type == SYMBOL_CONCAT:
-				self.emitcode("NEWSTACKSTRING","allocate stack space for concat " + key)
+				self.emitcode("NEWSTACKSTRING", "allocate stack space for concat " + key)
 				self.emitcode("mov [" + symbol.label + "], rax")
 		# need to init all the global string variables
 		for key in self.variable_symbol_table.symbollist():

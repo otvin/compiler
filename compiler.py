@@ -194,16 +194,18 @@ class ProcFuncHeading:
 		realargs = 0
 		i = 0
 		while i < len(self.parameters):
-			if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER or self.parameters[i].byref:
+			sp = self.parameters[i]
+			sptype = sp.type
+			if sptype == TOKEN_VARIABLE_TYPE_INTEGER or sptype == TOKEN_VARIABLE_TYPE_STRING or sp.byref:
 				# byref parameters are passed as integers
 				intargs += 1
-			elif self.parameters[i].type == TOKEN_VARIABLE_TYPE_REAL:
+			elif sptype == TOKEN_VARIABLE_TYPE_REAL:
 				realargs += 1
 			else: # pragma: no cover
-				raise ValueError("Invalid parameter type: " + DEBUG_TOKENDISPLAY(self.parameters[i].type))
+				raise ValueError("Invalid parameter type: " + DEBUG_TOKENDISPLAY(sptype))
 
-			if self.parameters[i].name == paramName:
-				if self.parameters[i].type == TOKEN_VARIABLE_TYPE_INTEGER or self.parameters[i].byref:
+			if sp.name == paramName:
+				if sptype == TOKEN_VARIABLE_TYPE_INTEGER or sp.byref:
 					ret = asm_funcs.intParameterPositionToRegister(intargs)
 				else:
 					ret = asm_funcs.realParameterPositionToRegister(realargs)
@@ -497,26 +499,41 @@ class AST():
 			localvarbytesneeded = 0
 
 			if self.token.type == TOKEN_FUNCTION:
+				# We need to allocate space on the stack for the return value, as a given function may
+				# set and reset the return value multiple times, invoking other code that may clobber
+				# rax/xmm0 in betweeen, and can set it before the function ends.
+
+
 				if self.procFuncHeading.returntype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 					localvarbytesneeded += 8
 					self.procFuncHeading.resultAddress = '[RBP-' + str(localvarbytesneeded) + ']'
+				elif self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_STRING:
+					# Per ABI - if a type has return class MEMORY, then the caller provides space for the return value and
+					# passes this address in RDI as if it were the first argument to the function.  Strings are greater than
+					# 4 eightbytes, so have return class MEMORY.
+					raise ValueError ("String return types not yet supported")
 				else: # pragma: no cover
 					raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY(self.procFuncHeading.returntype.type))
 
 			self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
 			for i in self.procFuncHeading.parameters:
-				if i.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
+				if i.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL, TOKEN_VARIABLE_TYPE_STRING]:
 					localvarbytesneeded += 8
 					if i.type == TOKEN_VARIABLE_TYPE_INTEGER:
 						if i.byref:
 							symboltype = asm_funcs.SYMBOL_INTEGER_PTR
 						else:
 							symboltype = asm_funcs.SYMBOL_INTEGER
-					else:
+					elif i.type == TOKEN_VARIABLE_TYPE_REAL:
 						if i.byref:
 							symboltype = asm_funcs.SYMBOL_REAL_PTR
 						else:
 							symboltype = asm_funcs.SYMBOL_REAL
+					else:
+						if i.byref:
+							raise ValueError ("ByRef String parameters not yet supported")
+						else:
+							symboltype = asm_funcs.SYMBOL_STRING
 
 					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, '[RBP-' + str(localvarbytesneeded) + ']')
 
@@ -531,14 +548,18 @@ class AST():
 							symboltype = asm_funcs.SYMBOL_INTEGER
 						else:
 							symboltype = asm_funcs.SYMBOL_REAL
-						self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, '[RBP - ' + str(localvarbytesneeded) + ']')
+					elif i.token.type == TOKEN_VARIABLE_TYPE_STRING:
+						localvarbytesneeded += 256
+						symboltype = asm_funcs.SYMBOL_STRING
+
 					else: # pragma: no cover
 						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY(i.token.type))
+					self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, '[RBP - ' + str(localvarbytesneeded) + ']')
 
 			localvarbytesneeded = self.find_procfunc_concats(localvarbytesneeded, self.procFuncHeading)
 
-
 			if localvarbytesneeded > 0:
+				assembler.emitcode("PUSH RBP")  # ABI requires callee to preserve RBP
 				assembler.emitcode("MOV RBP, RSP", "save stack pointer")
 				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local variable storage")
 				for i in self.procFuncHeading.parameters:
@@ -546,9 +567,10 @@ class AST():
 					register = self.procFuncHeading.getRegisterForParameterName(i.name)
 					if i.type == TOKEN_VARIABLE_TYPE_INTEGER or i.byref:
 						assembler.emitcode("MOV " + paramlabel + ', ' + register, 'param: ' + i.name)
-					else:
+					elif i.type == TOKEN_VARIABLE_TYPE_REAL:
 						assembler.emitcode("MOVSD " + paramlabel + ', ' + register, 'param: ' + i.name)
-
+					elif i.type == TOKEN_VARIABLE_TYPE_STRING:
+						assembler.emitcopystring(paramlabel, register)
 				# setup the concats
 				for key in self.procFuncHeading.localvariableSymbolTable.symbollist():
 					symbol = self.procFuncHeading.localvariableSymbolTable.get(key)
@@ -569,6 +591,7 @@ class AST():
 
 			if localvarbytesneeded > 0:
 				assembler.emitcode("MOV RSP, RBP", "restore stack pointer")
+				assembler.emitcode("POP RBP")
 
 			assembler.emitcode("RET")
 		else:
@@ -851,9 +874,10 @@ class AST():
 				raise ValueError("Concat() requires 2 or more arguments.")
 			else:
 				if not(procFuncHeadingScope is None):
-					# concats are ALWAYS local - so if there is a ProcFuncHeadingScope, then the concat IS
-					# local, so we do not have to track that we found it and then back out to the global scope
-					# to check
+					# concats are ALWAYS local variables, never parameters, nor are they ever global variables if
+					# encountered inside a function/procedure.  So if there is a ProcFuncHeadingScope, then the concat IS
+					# a local variable, period, so we do not have to track that we found it and then back out to the global scope
+					# in case we did not find it locally and then search for it globally.
 					if not(procFuncHeadingScope.localvariableSymbolTable is None):
 						label = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label
 					else: # pragma: no cover
@@ -894,26 +918,40 @@ class AST():
 				# If this is a param or local variable in a function/proc we refer to it via the offset from RBP
 				if not (procFuncHeadingScope.localvariableSymbolTable is None):
 					if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
+						child = self.children[0]
 						symbol = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value)
 						found_symbol = True
-						self.children[0].assemble(assembler, procFuncHeadingScope)
 
-						if not symbol.isPointer():
-							if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
-								assembler.emitcode("MOV " + symbol.label + ", RAX")
-							elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
-								assembler.emitcode("MOVSD " + symbol.label + ", XMM0")
-							else: # pragma: no cover
-								raise ValueError("Invalid expressiontype")
+						if symbol.type != asm_funcs.SYMBOL_STRING:
+							child.assemble(assembler, procFuncHeadingScope)
+
+							if not symbol.isPointer():
+								if child.expressiontype == EXPRESSIONTYPE_INT:
+									assembler.emitcode("MOV " + symbol.label + ", RAX")
+								elif child.expressiontype == EXPRESSIONTYPE_REAL:
+									assembler.emitcode("MOVSD " + symbol.label + ", XMM0")
+								else: # pragma: no cover
+									raise ValueError("Invalid expressiontype")
+							else:
+								if child.expressiontype == EXPRESSIONTYPE_INT:
+									assembler.emitcode("MOV R11, " + symbol.label)
+									assembler.emitcode("MOV [R11], RAX")
+								elif child.expressiontype == EXPRESSIONTYPE_REAL:
+									assembler.emitcode("MOV R11, " + symbol.label)
+									assembler.emitcode("MOVDQU [R11], XMM0")
+								else: # pragma: no cover
+									raise ValueError("Invalid expressiontype")
 						else:
-							if self.children[0].expressiontype == EXPRESSIONTYPE_INT:
-								assembler.emitcode("MOV R11, " + symbol.label)
-								assembler.emitcode("MOV [R11], RAX")
-							elif self.children[0].expressiontype == EXPRESSIONTYPE_REAL:
-								assembler.emitcode("MOV R11, " + symbol.label)
-								assembler.emitcode("MOVDQU [R11], XMM0")
-							else: # pragma: no cover
-								raise ValueError("Invalid expressiontype")
+							# two options - first, we are assigning from a string literal.
+							# second, we are assigning from some other string expression.
+							if not symbol.isPointer():
+								if child.token.type == TOKEN_STRING_LITERAL:
+									assembler.emit_copyliteraltostring(symbol.label, child.token.value)
+								else:
+									child.assemble(assembler, procFuncHeadingScope) # RAX has the address of the resulting String
+									assembler.emit_copystring(symbol.label, "RAX")
+							else:
+								raise ValueError("Cannot handle byref Strings yet.")
 			if found_symbol == False:
 				# Must be a global variable or a function
 				symbol = assembler.variable_symbol_table.get(self.token.value)
@@ -925,7 +963,7 @@ class AST():
 					assembler.emitcode("MOVSD [" + symbol.label + "], XMM0")
 				elif symbol.type == asm_funcs.SYMBOL_STRING:
 					# two options - first, we are assigning from a string literal.
-					# seconds, we are assigning from some other string expression.
+					# second, we are assigning from some other string expression.
 					child = self.children[0]
 					if child.token.type == TOKEN_STRING_LITERAL:
 						assembler.emit_copyliteraltostring("[" + symbol.label + "]", child.token.value)
@@ -950,15 +988,11 @@ class AST():
 			# is this symbol a function parameter or local variable?
 			found_symbol = False
 			if not (procFuncHeadingScope is None):
-				# Even though functions now copy their parameters to the stack, so there is no reason
-				# to check the parameter list, at some point we may optimize the code by only copying parameters
-				# to the stack if they are passed byRef or used in function invocations within the current function.
-				# So, I am leaving the parameter list check in this block.
 				if not (procFuncHeadingScope.localvariableSymbolTable is None):
 					if procFuncHeadingScope.localvariableSymbolTable.exists(self.token.value):
 						found_symbol = True
 						symbol = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value)
-						if symbol.type == asm_funcs.SYMBOL_INTEGER:
+						if symbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_STRING]:
 							assembler.emitcode("MOV RAX, " + symbol.label)
 						elif symbol.type == asm_funcs.SYMBOL_REAL:
 							assembler.emitcode("MOVSD XMM0, " + symbol.label)
@@ -971,11 +1005,13 @@ class AST():
 						else: # pragma: no cover
 							raise ValueError ("Invalid Symbol Type")
 				if found_symbol == False:
+					# Even though functions now copy their parameters to the stack, so there is no reason
+					# to check the parameter list, at some point we may optimize the code by only copying parameters
+					# to the stack if they are passed byRef or used in function invocations within the current function.
+					# So, I am leaving the parameter list check here.
 					reg = procFuncHeadingScope.getRegisterForParameterName(self.token.value)
 					if not (reg is None):
 						found_symbol = True
-						# This is ugly, I could cheat and check the register name and infer type,
-						# Or I could have the getRegisterForParameterName() also return a type.
 						paramtype = procFuncHeadingScope.parameters[procFuncHeadingScope.getParameterPos[self.token.value]].type
 						if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
 							assembler.emitcode("MOV RAX, " + reg)
