@@ -399,7 +399,7 @@ class AST():
 							self.expressiontype = EXPRESSIONTYPE_REAL
 							foundit = True
 							break
-						elif param_type == TOKEN_VARIABLE_TYPE_STRING:
+						elif param.type == TOKEN_VARIABLE_TYPE_STRING:
 							self.expressiontype = EXPRESSIONTYPE_STRING
 							foundit = True
 							break
@@ -1582,8 +1582,8 @@ class Parser:
 		paramname = self.tokenizer.getNextToken(TOKEN_IDENTIFIER).value
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		paramtypetoken = self.tokenizer.getNextToken()
-		if not paramtypetoken.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]: # pragma: no cover
-			self.raiseParseError("Expected Integer or Real Procedure/Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtype.type))
+		if not paramtypetoken.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL, TOKEN_VARIABLE_TYPE_STRING]: # pragma: no cover
+			self.raiseParseError("Expected Integer, Real, or String Procedure/Function Parameter Type, got " + DEBUG_TOKENDISPLAY(paramtypetoken.type))
 		return ProcFuncParameter(paramname, paramtypetoken.type, byref)
 
 	def parseFormalParameterList(self, procfuncheading):
