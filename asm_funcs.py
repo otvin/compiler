@@ -1,16 +1,26 @@
 import os
 
-SYMBOL_FUNCTION = 0
-SYMBOL_PROCEDURE = 1
-SYMBOL_INTEGER = 2
-SYMBOL_INTEGER_PTR = 3
-SYMBOL_REAL = 4
-SYMBOL_REAL_PTR = 5
-SYMBOL_STRING = 6
-SYMBOL_STRING_PTR = 7
-SYMBOL_CONCAT = 8
+SYMBOLID = 0
+def NEXT_SYMBOLID():
+	global SYMBOLID
+	SYMBOLID += 1
+	return SYMBOLID
+def SymbolDef(display_string):
+	a = (NEXT_SYMBOLID(), display_string)
+	return a
 
-DEBUG_SYMBOLDISPLAY = ["FUNCTION", "PROCEDURE", "INT", "INTPTR", "REAL", "REALPTR", "STRING", "STRINGPTR", "CONCAT"]
+SYMBOL_FUNCTION = SymbolDef("FUNCTION")
+SYMBOL_PROCEDURE = SymbolDef("PROCEDURE")
+SYMBOL_INTEGER = SymbolDef("INT")
+SYMBOL_INTEGER_PTR = SymbolDef("INTPTR")
+SYMBOL_REAL = SymbolDef("REAL")
+SYMBOL_REAL_PTR = SymbolDef("REALPTR")
+SYMBOL_STRING = SymbolDef("STRING")
+SYMBOL_STRING_PTR = SymbolDef("STRINGPTR")
+SYMBOL_CONCAT = SymbolDef("CONCAT")
+
+def DEBUG_SYMBOLDISPLAY(symboldatatype): # pragma: no cover
+	return symboldatatype[1]
 
 def intParameterPositionToRegister(pos):
 	# First six integer parameters to functions are stored in registers.

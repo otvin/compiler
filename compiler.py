@@ -64,13 +64,28 @@ TOKEN_PROCEDURE_CALL = TokDef("Procedure Call")
 
 TOKEN_NOOP = TokDef("NO-OP")
 
-
-EXPRESSIONTYPE_INT = 0
-EXPRESSIONTYPE_REAL = 1
-EXPRESSIONTYPE_STRING = 2
-
 def DEBUG_TOKENDISPLAY(tokentype): # pragma: no cover
 	return tokentype[1]
+
+
+EXPRESSIONID = 0
+def NEXT_EXPRESSIONID():
+	global EXPRESSIONID
+	EXPRESSIONID += 1
+	return EXPRESSIONID
+def ExpressionDef(display_string):
+	a = (NEXT_EXPRESSIONID(), display_string)
+	return a
+
+EXPRESSIONTYPE_NONE = ExpressionDef("")
+EXPRESSIONTYPE_INT = ExpressionDef("Expressiontype: Integer")
+EXPRESSIONTYPE_REAL = ExpressionDef("Expressiontype: Real")
+EXPRESSIONTYPE_STRING = ExpressionDef("Expressiontype: String")
+
+def DEBUG_EXPRESSIONTYPEDISPLAY(expressiontype):
+	return expressiontype[1]
+
+
 
 
 # helper functions
@@ -234,7 +249,7 @@ class AST():
 		self.token = token
 		self.comment = comment # will get put on the line emitted in the assembly code if populated.
 		self.procFuncHeading = None  # only used for procs and funcs
-		self.expressiontype = None # will be EXPRESSIONTYPE_INT or EXPRESSIONTYPE_REAL
+		self.expressiontype = EXPRESSIONTYPE_NONE # will be set during static type checking
 		self.children = []
 
 	def rpn_print(self, level = 0): # pragma: no cover
@@ -983,7 +998,7 @@ class AST():
 					else: # pragma: no cover
 						raise ValueError ("Cannot assign to function outside of function scope: " + symbol.procfuncheading.name)
 				else: # pragma: no cover
-					raise ValueError ("Invalid variable type :" + asm_funcs.DEBUG_SYMBOLDISPLAY[symbol.type])
+					raise ValueError ("Invalid variable type :" + asm_funcs.DEBUG_SYMBOLDISPLAY(symbol.type))
 		elif self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:
 			# is this symbol a function parameter or local variable?
 			found_symbol = False
