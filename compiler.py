@@ -255,11 +255,9 @@ class AST():
 	def rpn_print(self, level = 0): # pragma: no cover
 		for x in self.children:
 			x.rpn_print(level + 1)
-		typestr = "" + (level * " ")
-		if self.expressiontype == EXPRESSIONTYPE_INT:
-			typestr += "Expressiontype: Integer |"
-		elif self.expressiontype == EXPRESSIONTYPE_REAL:
-			typestr += "Expressiontype: Real |"
+		typestr = level * " "
+		if self.expressiontype != EXPRESSIONTYPE_NONE:
+			typestr += DEBUG_EXPRESSIONTYPEDISPLAY(self.expressiontype) + "|"
 		print(typestr + self.token.debugprint())
 
 	def find_string_literals(self, assembler):
@@ -1739,7 +1737,7 @@ class Parser:
 		self.assembler.setup_bss()
 		self.assembler.setup_data()
 		self.assembler.setup_text()
-
+		self.AST.rpn_print()
 		self.AST.assembleProcsAndFunctions(self.assembler)
 
 		self.assembler.setup_start()
