@@ -1737,7 +1737,7 @@ class Parser:
 		self.assembler.setup_bss()
 		self.assembler.setup_data()
 		self.assembler.setup_text()
-		self.AST.rpn_print()
+
 		self.AST.assembleProcsAndFunctions(self.assembler)
 
 		self.assembler.setup_start()
