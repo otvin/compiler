@@ -7,6 +7,8 @@
 ;
 ;----------
 
+%include "fredstringmacro.inc"
+
 extern prtstrz  ; from nsm64
 extern prtstr   ; from nsm64
 extern newline  ; from nsm64
@@ -37,8 +39,8 @@ fred_err_invalid_size  db "Invalid string size",0
 
 
 ;----------
-;   A Pascal String is a data type that can hold up to 255 characters.  The first byte is an unsigned int 
-;   containing the length.  The remaining 255 bytes are the string data itself.  Unlike strings in C, 
+;   A Pascal String is a data type that can hold up to FREDSTRINGSIZE characters.  The first byte is an unsigned int 
+;   containing the length.  The remaining bytes are the string data itself.  Unlike strings in C, 
 ;   Pascal Strings are not null-terminated.  
 ;----------   
 
@@ -53,7 +55,7 @@ fred_err_invalid_size  db "Invalid string size",0
 ; Returns: Address of the new String in RAX
 ;----------
 newstring:
-    mov rdi, 256
+    mov rdi, FREDSTRINGSIZE + 1
     call malloc
     ; if malloc fails, rax will be 0
     test rax, rax
@@ -145,7 +147,7 @@ literaltostring:
     cmp byte [rcx], 0
     je .done
     ; validate we can increase the length of the String
-    cmp r9, 255
+    cmp r9, FREDSTRINGSIZE
     jge .err1
     mov r8b, byte[rcx]
     mov byte [rdx], r8b
@@ -187,7 +189,7 @@ stringconcatstring:
     mov dl, r9b ; save length of first string into low bits of rdx
     mov cl, byte [RSI]
     add r9, rcx
-    cmp r9, 255
+    cmp r9, FREDSTRINGSIZE
     jg .err1    
 
     push rdi ; movsb uses rdi as the destination, so we need to preserve RDI so we can update it at the end.
@@ -251,7 +253,7 @@ stringconcatliteral:
 
     ; ensure length of combined string will not exceed the max
     add r9, rcx
-    cmp r9, 255
+    cmp r9, FREDSTRINGSIZE
     jg .err1
 
     pop rdi
@@ -333,7 +335,7 @@ copyliteraltostring:
     cmp byte [rcx], 0
     je .done
     ; validate we can increase the length of the String
-    cmp r9, 255
+    cmp r9, FREDSTRINGSIZE
     jge .err1
     mov r8b, byte[rcx]
     mov byte [rdx], r8b

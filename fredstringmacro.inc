@@ -1,6 +1,8 @@
 %ifndef FREDSTRINGMACRO
 %define FREDSTRINGMACRO 1
 
+%define FREDSTRINGSIZE 255
+
 ;----------
 ;
 ;   NEWSTACKSTRING
@@ -11,10 +13,11 @@
 ; Returns: Address of the new String in RAX
 ;----------
 %imacro NEWSTACKSTRING 0
-    sub rsp, 256
+    sub rsp, FREDSTRINGSIZE + 1
     mov rax, rsp
     mov [rax], byte 0
 %endmacro
 
+%idefine FREESTACKSTRING add rsp, FREDSTRINGSIZE + 1
 
 %endif

@@ -183,6 +183,15 @@ class ProcFuncParameter:
 		self.type = type  # will be a token variable type e.g. TOKEN_VARIABLE_TYPE_INTEGER
 		self.byref = byref # will be a boolean
 
+	def isIntegerParameterType(self):
+		# Section 3.2.3 of the ABI - defines the types of registers used to pass parameters
+		# Note: our implementation of ByVal Strings involves passing a reference and then copying
+		# it locally, vs. passing the String on the stack.
+		if self.byref or self.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_STRING]:
+			return True
+		else:
+			return False
+
 class ProcFuncHeading:
 	def __init__(self, name):
 		self.name = name
@@ -210,22 +219,24 @@ class ProcFuncHeading:
 		i = 0
 		while i < len(self.parameters):
 			sp = self.parameters[i]
-			sptype = sp.type
-			if sptype == TOKEN_VARIABLE_TYPE_INTEGER or sptype == TOKEN_VARIABLE_TYPE_STRING or sp.byref:
-				# byref parameters are passed as integers
+			if sp.isIntegerParameterType():
 				intargs += 1
-			elif sptype == TOKEN_VARIABLE_TYPE_REAL:
-				realargs += 1
-			else: # pragma: no cover
-				raise ValueError("Invalid parameter type: " + DEBUG_TOKENDISPLAY(sptype))
-
-			if sp.name == paramName:
-				if sptype == TOKEN_VARIABLE_TYPE_INTEGER or sp.byref:
+				if sp.name == paramName:
 					ret = asm_funcs.intParameterPositionToRegister(intargs)
-				else:
+					break
+			else:
+				realargs += 1
+				if sp.name == paramName:
 					ret = asm_funcs.realParameterPositionToRegister(realargs)
+					break
 			i += 1
 		return ret
+
+	def getIntegerParameterCount(self):
+		return self.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER)
+
+	def getRealParameterCount(self):
+		return self.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL)
 
 	def getParameterCountByType(self, type):
 		ret = 0
@@ -638,8 +649,13 @@ class AST():
 			raise valueError ("Invalid ExpressionType")
 
 	def assembleProcFuncInvocation(self, assembler, procFuncHeadingScope, symbol):
+		# procFuncHeadingScope = the scope of the caller
+		# symbol = contains the procFuncHeading of the function being called
+		#
 		# only difference between procedures and functions at invocation is that the function assembly
-		# will set up the return values in RAX or XMM0.
+		# will set up the return values in RAX or XMM0, plus allocate the memory needed if the function
+		# returns a Memory type, such as String.
+		#
 		# current limitation - 6 int + 8 real parameters max - to increase this later, we just need to use relative
 		# stack pointer address in the local symbol table to store where the others are.
 		# the parameters will be the children in the AST
@@ -649,8 +665,8 @@ class AST():
 		# rax or XMM0 has the return
 		# pop all the registers back except XMM0
 
-		assembler.preserve_xmm_registers_for_procfunc_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
-		assembler.preserve_int_registers_for_procfunc_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
+		assembler.preserve_xmm_registers_for_procfunc_call(symbol.procfuncheading.getRealParameterCount())
+		assembler.preserve_int_registers_for_procfunc_call(symbol.procfuncheading.getIntegerParameterCount())
 
 		i = 0
 		intparams = 0
@@ -658,11 +674,46 @@ class AST():
 		while i < len(self.children):
 
 			curparam = symbol.procfuncheading.getParameterByPos(i)
-			if not curparam.byref:
+			if curparam.byref:
+				# If we are passing into a proc/function a param that itself is not a pointer, then we need
+				# to pass its address if it is being passed byref.  A param that is a pointer itself we can just
+				# pass the value of the pointer, because that is a reference to the original variable.
+				curchild = self.children[i]
+				childtoken = curchild.token
+
+				# In general, arguments to procs/functions can be variables, literals, or other functions.  However,
+				# when passing a value byref, the only of those three that is acceptable is a variable.
+				if childtoken.type != TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:  # pragma: no cover
+					raise ValueError("Variable identifier expected in " + symbol.procfuncheading.name + '()')
+
+				intparams += 1  # all pointers are ints
+
+				# The assemble() method of the child will place the current value of the variable into RAX/XMM0.
+				# So we do not assemble() the child.  Instead, we go through the symbol table itself.  If the child
+				# is a pointer itself, that means that it was passed byref into the caller, so the actual value
+				# of the child can be passed to the callee.  If the child is not a pointer, then we need to get the
+				# effective address of the child (i.e. a pointer to the child) and then pass that into the callee.
+				found_symbol = False
+				if not (procFuncHeadingScope is None):
+					if not (procFuncHeadingScope.localvariableSymbolTable is None):
+						if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
+							found_symbol = True
+							childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
+							if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL]:
+								assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+							elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR]:
+								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+							else:  # pragma: no cover
+								raise ValueError("Invalid symboltype")
+				if not found_symbol:
+					# must be a global variable
+					childsymbol = assembler.variable_symbol_table.get(childtoken.value)
+					assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+			else:
 				# If we are passing into a proc/function a value that itself is a pointer, then we
-				#	need to dereference the pointer if it is being passed byval, or pass the pointer
-				#	itself if it's going byref.  That will be handled by the .assemble() function
-				#	for each child.
+				# need to dereference the pointer if it is being passed byval.  The assemble()
+				# method does that automatically because it moves the result of the computation
+				# into RAX / XMM0
 
 				paramtype = curparam.type
 				self.children[i].assemble(assembler, procFuncHeadingScope)
@@ -687,37 +738,7 @@ class AST():
 						assembler.emitcode("MOVSD " + asm_funcs.realParameterPositionToRegister(realparams) + ", XMM0")
 				else:  # pragma: no cover
 					raise ValueError("Invalid expressiontype")
-			else:
-				# If we are passing into a proc/function a param that itself is not a pointer, then we need
-				#	to pass its address if it is being passed byref, or a copy of the value if
-				#	is not.
-				curchild = self.children[i]
-				childtoken = curchild.token
 
-				if childtoken.type != TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:  # pragma: no cover
-					raise ValueError("Variable identifier expected in " + symbol.procfuncheading.name + '()')
-
-				intparams += 1  # all pointers are ints
-
-				# Instead of calling the child's assemble() function, we wil assemble it here, because
-				#	the child's assemble will dereference the pointer if the child originally was passed
-				#	in byRef
-				found_symbol = False
-				if not (procFuncHeadingScope is None):
-					if not (procFuncHeadingScope.localvariableSymbolTable is None):
-						if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
-							found_symbol = True
-							childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
-							if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL]:
-								assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-							elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR]:
-								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-							else:  # pragma: no cover
-								raise ValueError("Invalid symboltype")
-				if not found_symbol:
-					# must be a global variable
-					childsymbol = assembler.variable_symbol_table.get(childtoken.value)
-					assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
 
 			i += 1
 
@@ -725,8 +746,9 @@ class AST():
 			assembler.emitpopxmmreg("XMM0")
 
 		assembler.emitcode("CALL " + symbol.label, "invoke " + symbol.procfuncheading.name + '()')
-		assembler.restore_xmm_registers_after_procfunc_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_REAL))
-		assembler.restore_int_registers_after_procfunc_call(symbol.procfuncheading.getParameterCountByType(TOKEN_VARIABLE_TYPE_INTEGER))
+		assembler.restore_int_registers_after_procfunc_call(symbol.procfuncheading.getIntegerParameterCount())
+		assembler.restore_xmm_registers_after_procfunc_call(symbol.procfuncheading.getRealParameterCount())
+
 
 	def assemble(self, assembler, procFuncHeadingScope):
 		if self.token.type == TOKEN_INT:
