@@ -555,7 +555,7 @@ class AST():
 							symboltype = asm_funcs.SYMBOL_STRING
 
 					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, '[RBP-' + str(localvarbytesneeded) + ']')
-
+					assembler.emitcomment("Parameter: " + i.name + " = [RBP-" + str(localvarbytesneeded) + "]")
 				else: # pragma: no cover
 					raise ValueError ("Invalid variable type : " + DEBUG_TOKENDISPLAY(i.type))
 
@@ -574,13 +574,15 @@ class AST():
 					else: # pragma: no cover
 						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY(i.token.type))
 					self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, '[RBP - ' + str(localvarbytesneeded) + ']')
+					assembler.emitcomment("Variable: " + i.token.value + " = [RBP-" + str(localvarbytesneeded) + "]")
 
 			localvarbytesneeded = self.find_procfunc_concats(localvarbytesneeded, self.procFuncHeading)
 
 			if localvarbytesneeded > 0:
 				assembler.emitcode("PUSH RBP")  # ABI requires callee to preserve RBP
 				assembler.emitcode("MOV RBP, RSP", "save stack pointer")
-				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local variable storage")
+				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local storage")
+				numbyvalstringparameters = 0
 				for i in self.procFuncHeading.parameters:
 					paramlabel = self.procFuncHeading.localvariableSymbolTable.get(i.name).label
 					register = self.procFuncHeading.getRegisterForParameterName(i.name)
@@ -589,7 +591,11 @@ class AST():
 					elif i.type == TOKEN_VARIABLE_TYPE_REAL:
 						assembler.emitcode("MOVSD " + paramlabel + ', ' + register, 'param: ' + i.name)
 					elif i.type == TOKEN_VARIABLE_TYPE_STRING:
-						assembler.emitcopystring(paramlabel, register)
+						if not i.byref:
+							numbyvalstringparameters += 1
+							assembler.emitcode("NEWSTACKSTRING","Allocate stack space for param " + i.name)
+							assembler.emitcode("MOV " + paramlabel + ", rax")
+
 				# setup the concats
 				for key in self.procFuncHeading.localvariableSymbolTable.symbollist():
 					symbol = self.procFuncHeading.localvariableSymbolTable.get(key)
@@ -598,6 +604,39 @@ class AST():
 						assembler.emitcode("mov [" + symbol.label + "], rax")
 
 				assembler.emitcode('AND RSP, QWORD -16', '16-byte align stack pointer')
+
+				if numbyvalstringparameters > 0:
+					# copy byval string parameters - need to do this after all the stack space for the proc/func is
+					# allocated, else we end up creating a new stack frame in the middle of the stack frame we're
+					# trying to create.
+
+					# this is a bit hacky but here is the situation:
+					# Normally above we preserve the value of a register into local storage.  For
+					# strings that are byval, we do NOT do this, because we were given a pointer and
+					# we want to copy the string so we do not edit the original.  The problem: copystring
+					# uses RDI and RSI.  So if we have a byval string passed in RDI or RSI then we can step on
+					# it by doing something like:
+					#	mov rdi, [rbp-16]
+					#	mov rsi, rdi  # BUG - this rdi is because the string passed in was in first parameter
+
+					assembler.emitcode("PUSH R12","Cache RDI and RSI")
+					assembler.emitcode("PUSH R13")
+					assembler.emitcode("MOV R12, RDI")
+					assembler.emitcode("MOV R13, RSI")
+
+					for i in self.procFuncHeading.parameters:
+						if i.type == TOKEN_VARIABLE_TYPE_STRING:
+							if not i.byref:
+								paramlabel = self.procFuncHeading.localvariableSymbolTable.get(i.name).label
+								register = self.procFuncHeading.getRegisterForParameterName(i.name)
+								if register.lower() == "rdi":
+									register = "R12"
+								elif register.lower() == "rsi":
+									register = "R13"
+								assembler.emit_copystring(paramlabel, register)
+
+					assembler.emitcode("POP R13")
+					assembler.emitcode("POP R12")
 
 			self.children[0].assemble(assembler, procfuncsymbol.procfuncheading)  # the code in the Begin statement will reference the parameters before global variables
 
@@ -652,7 +691,10 @@ class AST():
 		# returns a Memory type, such as String.
 		#
 		# current limitation - 6 int + 8 real parameters max - to increase this later, we just need to use relative
-		# stack pointer address in the local symbol table to store where the others are.
+		# stack pointer address in the local symbol table to store where the others are.  Note: if a function
+		# has a "memory" return type (e.g. String), then the return type consumes one of the registers for int
+		# parameters so current limitation would be 5 int parameters in that case.
+		#
 		# the parameters will be the children in the AST
 		# any register (except XMM0) used to pass a parameter gets pushed onto the stack
 		# put the parameters into those registers, with special handling for XMM0
@@ -712,7 +754,7 @@ class AST():
 
 				paramtype = curparam.type
 				self.children[i].assemble(assembler, procFuncHeadingScope)
-				if paramtype == TOKEN_VARIABLE_TYPE_INTEGER:
+				if paramtype in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_STRING]:
 					intparams += 1
 					if self.children[i].expressiontype == EXPRESSIONTYPE_REAL:  # pragma: no cover
 						raise ValueError("Cannot pass real into integer-typed parameter into " + symbol.procfuncheading.name + '()')
