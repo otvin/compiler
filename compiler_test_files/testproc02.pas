@@ -17,7 +17,8 @@ begin
   writeln(b);
   c:=concat(a,b);
   writeln(c);
-  a:='Oops';
+  a:='Doh!';
+  concatwrapper(a,b);
 end;
 
 begin {main}
