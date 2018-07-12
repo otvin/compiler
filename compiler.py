@@ -271,21 +271,16 @@ class AST():
 			typestr += DEBUG_EXPRESSIONTYPEDISPLAY(self.expressiontype) + "|"
 		print(typestr + self.token.debugprint())
 
-	def find_string_literals(self, assembler):
+	def find_literals(self,assembler):
 		if self.token.type == TOKEN_STRING_LITERAL:
 			if not (self.token.value in assembler.string_literals):
 				assembler.string_literals[self.token.value] = assembler.generate_literal_name('string')
-		else:
-			for child in self.children:
-				child.find_string_literals(assembler)
-
-	def find_real_literals(self, assembler):
-		if self.token.type == TOKEN_REAL:
+		elif self.token.type == TOKEN_REAL:
 			if not (self.token.value in assembler.real_literals):
 				assembler.real_literals[self.token.value] = assembler.generate_literal_name('real')
 		else:
 			for child in self.children:
-				child.find_real_literals(assembler)
+				child.find_literals(assembler)
 
 	def find_main_begin(self):
 		if self.token.type == TOKEN_BEGIN and self.token.value == True:
@@ -1746,8 +1741,7 @@ class Parser:
 
 	def assemble(self, filename):
 		self.assembler = asm_funcs.Assembler(filename)
-		self.AST.find_string_literals(self.assembler)
-		self.AST.find_real_literals(self.assembler)
+		self.AST.find_literals(self.assembler)
 		self.AST.find_global_variable_declarations(self.assembler)
 		# concat needs stack space allocated for each invocation.  If we add other reserved
 		# functions with same requirements, we can rename this method.
