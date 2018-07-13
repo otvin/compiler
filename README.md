@@ -110,10 +110,7 @@ Compiler does not error when invoking a function and ignoring the return value (
 
 Many symbols are generated with the word 'fred' plus additional prefix.  It is quite possible to generate a symbol collision and get an unexpected "variable redefined" error if you use lots of variables that begin with 'fred.'  So, don't do that.
 
-### Not yet tested:
-
-Have not tested ByRef parameters with Procedures
-
+Cannot pass in a string literal as a parameter to a procedure or function that takes a String parameter.
 
 ### Code Coverage:
 

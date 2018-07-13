@@ -550,7 +550,7 @@ class AST():
 							symboltype = asm_funcs.SYMBOL_REAL
 					else:
 						if i.byref:
-							raise ValueError ("ByRef String parameters not yet supported")
+							symboltype = asm_funcs.SYMBOL_STRING_PTR
 						else:
 							symboltype = asm_funcs.SYMBOL_STRING
 
@@ -736,9 +736,9 @@ class AST():
 						if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
 							found_symbol = True
 							childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
-							if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL]:
+							if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL, asm_funcs.SYMBOL_STRING]:
 								assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-							elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR]:
+							elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR, asm_funcs.SYMBOL_STRING_PTR]:
 								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
 							else:  # pragma: no cover
 								raise ValueError("Invalid symboltype")
@@ -994,7 +994,7 @@ class AST():
 						symbol = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value)
 						found_symbol = True
 
-						if symbol.type != asm_funcs.SYMBOL_STRING:
+						if symbol.type not in [asm_funcs.SYMBOL_STRING, asm_funcs.SYMBOL_STRING_PTR]:
 							child.assemble(assembler, procFuncHeadingScope)
 
 							if not symbol.isPointer():
@@ -1023,7 +1023,10 @@ class AST():
 									child.assemble(assembler, procFuncHeadingScope) # RAX has the address of the resulting String
 									assembler.emit_copystring(symbol.label, "RAX")
 							else:
-								raise ValueError("Cannot handle byref Strings yet.")
+								child.assemble(assembler, procFuncHeadingScope)
+								assembler.emitcode("MOV R11, " + symbol.label)
+								assembler.emit_copystring("[R11]", "RAX")
+
 			if found_symbol == False:
 				# Must be a global variable or a function
 				symbol = assembler.variable_symbol_table.get(self.token.value)
@@ -1068,7 +1071,7 @@ class AST():
 							assembler.emitcode("MOV RAX, " + symbol.label)
 						elif symbol.type == asm_funcs.SYMBOL_REAL:
 							assembler.emitcode("MOVSD XMM0, " + symbol.label)
-						elif symbol.type == asm_funcs.SYMBOL_INTEGER_PTR:
+						elif symbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_STRING_PTR]:
 							assembler.emitcode("MOV R11, " + symbol.label)
 							assembler.emitcode("MOV RAX, [R11]")
 						elif symbol.type == asm_funcs.SYMBOL_REAL_PTR:
