@@ -1,7 +1,6 @@
 program testglobalvar02;
 var
-    fred : integer;
-    joe : integer;
+    fred, joe : integer;
 
 begin
     fred := -4;

@@ -4,6 +4,7 @@ This program is a compiler for a subset of Pascal.  Compiler is written in pytho
 
 The compiler supports the following Pascal language features:
 * Signed Real and Integer variables and literals (64-bit)
+* String variables (Pascal strings = 255 max characters)
 * String literals
 * if - then [- else]
 * while - do
@@ -11,9 +12,11 @@ The compiler supports the following Pascal language features:
   * When Real and Integer combined in an operation, result is a Real
 * Logical operators: equal to, not equal, less than, less than or equal, greater than, greater than or equal
   * both Real and Integer
+* String Operators:
+  * concat()
 * Procedures and Functions
   *  Parameters passed by value or by reference
-  *  Up to 8 Real parameters by value, up to a combined 6 Integer + by reference parameters
+  *  Up to 8 Real parameters by value, up to a combined 6 Integer/String or by reference parameters
   *  Integers passed in byval to Real parameters get converted to Real
   *  Recursion
 * Write() and Writeln() to stdout
@@ -40,8 +43,9 @@ Text in /* */ is a comment
 <block> ::= [<declaration part>] <statement part>
 <declaration part> ::= [<variable declaration part>] [<procedure and function declaration part>]
 <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
-<variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
-<type> ::= "integer" | "real"   
+<variable declaration> ::= <identifier list> ":" <type>
+<identifier list> ::= <identifier> {"," <identifier>}
+<type> ::= "integer" | "real" | "string"
 <procedure and function declaration part> ::= {(<procedure declaration> | <function declaration>) ";"}
 <function declaration> ::= <function heading> ";" <procedure or function body>
 <procedure declaration> ::= <procedure heading> ";" <procedure or function body>
@@ -51,23 +55,22 @@ Text in /* */ is a comment
 <formal parameter list> ::= "(" ["var"] <identifier> ":" <type> {";" ["var"] <identifier> ":" <type>} ")"    /* Fred note - we are only allowing 6 Integer and 8 Real parameters */
 <statement part> ::= "begin" <statement sequence> "end"
 <compound statement> ::= "begin" <statement sequence> "end"  /* Fred note - statement part == compound statement */
-<statement sequence> ::= <statement> {";" <statement>}
-<statement> ::= <simple statement> | <structured statement>
-<simple statement> ::= <assignment statement> | <write statement>   /* Fred note - print statement not in official BNF */
+<statement sequence> ::= <statement> | <statement> ';' <statement sequence>
+<statement> ::= <simple statement> | <structured statement> | <empty statement>
+<simple statement> ::= <assignment statement> | <procedure statement>
+<procedure statement> ::= <procedure identifier> [<actual parameter list>]
 <assignment statement> ::= <variable identifier> ":=" <simple expression>
-<write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
-<write parameter> ::= <simple expression> | <string literal>
 <structured statement> ::= <compound statement> | <while statement> | <if statement>
 <if statement> ::= "if" <expression> "then" <statement> ["else" <statement>]
 <while statement> ::= "while" <expression> "do" <statement>
 <expression> ::= <simple expression> [<relational operator> <simple expression>]
-<simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> */
+<simple expression> ::= <term> { <addition operator> <term> }    /* Fred note - official BNF handles minus here, I do it in <integer> and <real>*/
 <term> ::= <factor> { <multiplication operator> <factor> }
-<factor> ::= <integer> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
-<function designator> ::= <function identifier> <actual parameter list>
+<factor> ::= <integer> | <real> | <string> | <variable identifier> | <function designator> | "(" <simple expression> ")"  /* Fred note - official BNF allows <expression> here */
+<function designator> ::= <function identifier> [<actual parameter list>]
 <actual parameter list> ::= "(" <simple expression> {"," <simple expression>} ")"
 
-<string literal> = "'" {<any character>} "'"  # note - apostrophes in string literals have to be escaped by using two apostrophes
+<string literal> = "'" {<any character>} "'"  note - apostrophes in string literals have to be escaped by using two apostrophes
 <variable identifier> ::= <identifier>
 <identifier> ::= <letter> {<letter> | <digit>}
 <integer> ::= ["-"] <digit> {<digit>}
@@ -77,9 +80,17 @@ Text in /* */ is a comment
 <addition operator> ::= "+" | "-"
 <multiplication operator> ::= "*" | "/", "DIV"
 <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
+
+These aren't technically in the BNF.  Write/Writeln are just procedures.  Concat is just a function.  So these
+aren't needed because the BNF covers them, however I wrote them out for my own benefit.
+<write statement> ::= ("write" | "writeln") "(" <write parameter> {"," <write parameter>} ")"
+<write parameter> ::= <simple expression> | <string literal>
+<concat statement> ::= "concat" "(" <string parameter> "," <string parameter> {"," <string parameter>} ")"
+<string parameter> :: <simple expression> | <string literal>  /* simple expression here must be of string type */
+
 ```
  
-In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations and an optional set of procedure and function declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements, variable assignments, function invocations, ```while/do``` blocks, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` or ```while``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, or after the ```do```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display string literals, variables, mathematical expressions.  Addition, subtraction, multiplication, and both floating-point and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86-64 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
+In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations and an optional set of procedure and function declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements, variable assignments, concat() invocations, function invocations, ```while/do``` blocks, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` or ```while``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, or after the ```do```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display string literals, variables, and mathematical expressions.  Addition, subtraction, multiplication, and both floating-point and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86-64 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
 
 The compiler will ignore comments between open and close curly braces ```{``` and ```}```, anywhere in the code.  So ``` 4 + {random comment} 2``` will evaluate to ```6```.
 
@@ -88,6 +99,8 @@ Recursive functions are supported.  See ```test_recursion.pas``` in the test sui
 Under the covers, the program first creates an Abstract Syntax Tree (AST) from the expression, then generates the assembly code from the AST.  Currently, the AST knows how to generate its own assembly code even though that overloads that class a bit, because it's easier to generate it recursively from within a single function if it's a member of that class.
 
 All Integers are 64-bit.  All Reals are 64-bit.  If an Integer is passed into a function for a Real parameter it will be converted to Real on the fly.  Similarly, arithmetic between an Integer and a Real will convert to a Real.  Trying to pass a Real into an Integer parameter however will result in a compile error.
+
+Strings can hold a maximum of 255 characters.  Exceeding that via a variable assignment of a longer string literal or a concat() statement will lead to runtime error.
 
 ### To run it:
 
@@ -106,11 +119,13 @@ Compiler does not provide a good error message when invoking a procedure as a pa
 
 Compiler does not error when invoking a function and ignoring the return value (basically treating a function like a procedure call).  This is not valid Pascal.  
 
+## Known limitations:
+
+Cannot pass in a string literal as a parameter to a procedure or function that takes a String parameter.
+
 ## Design limitation:
 
 Many symbols are generated with the word 'fred' plus additional prefix.  It is quite possible to generate a symbol collision and get an unexpected "variable redefined" error if you use lots of variables that begin with 'fred.'  So, don't do that.
-
-Cannot pass in a string literal as a parameter to a procedure or function that takes a String parameter.
 
 ### Code Coverage:
 
@@ -126,9 +141,9 @@ All the code missed is expected
     
 Branch coverage:
 
-    asm_funcs.py: 97%
+    asm_funcs.py: 98%
     
-    compiler.py: 97%
+    compiler.py: 96%
 
 ### References
 While I have read numerous stack overflow and other posts, there are some sources that I wanted to call out.

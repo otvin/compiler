@@ -1,8 +1,7 @@
 program testlocalvar02;
 
 function addsquares(one : Integer; two: Integer) : Integer;
-var localvar : Integer;
-    localvar2 : Integer;
+var localvar, localvar2 : Integer;
 
 begin
     localvar := one * one;

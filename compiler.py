@@ -82,7 +82,7 @@ EXPRESSIONTYPE_INT = ExpressionDef("Expressiontype: Integer")
 EXPRESSIONTYPE_REAL = ExpressionDef("Expressiontype: Real")
 EXPRESSIONTYPE_STRING = ExpressionDef("Expressiontype: String")
 
-def DEBUG_EXPRESSIONTYPEDISPLAY(expressiontype):
+def DEBUG_EXPRESSIONTYPEDISPLAY(expressiontype): # pragma: no cover
 	return expressiontype[1]
 
 
@@ -109,7 +109,8 @@ def isSymbol(char):
 # <block> ::= [<declaration part>] <statement part>
 # <declaration part> ::= [<variable declaration part>] [<procedure and function declaration part>]
 # <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
-# <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
+# <variable declaration> ::= <identifier list> ":" <type>
+# <identifier list> ::= <identifier> {"," <identifier>}
 # <type> ::= "integer" | "real" | "string"
 # <procedure and function declaration part> ::= {(<procedure declaration> | <function declaration>) ";"}
 # <function declaration> ::= <function heading> ";" <procedure or function body>
@@ -1617,7 +1618,8 @@ class Parser:
 
 	def parseVariableDeclarations(self):
 		# <variable declaration part> ::= "var" <variable declaration> ";" {<variable declaration> ";"}
-		# <variable declaration> ::= <identifier> ":" <type>     /* Fred note - only handling one identifier at a time, not a sequence */
+		# <variable declaration> ::= <identifier list> ":" <type>
+		# <identifier list> ::= <identifier> {"," <identifier>}
 		# <type> ::= "integer" | "real" | "string"
 		ret = AST(self.tokenizer.getNextToken(TOKEN_VAR))
 		done = False
@@ -1634,15 +1636,20 @@ class Parser:
 			elif self.tokenizer.peekMatchStringAndSpace("procedure"):
 				done = True
 			else:
-				ident_token = self.tokenizer.getNextToken(TOKEN_IDENTIFIER)
+				ident_token_list = []
+				ident_token_list.append(self.tokenizer.getNextToken(TOKEN_IDENTIFIER))
+				while self.tokenizer.peek() == ",":
+					comma = self.tokenizer.getNextToken(TOKEN_COMMA)
+					ident_token_list.append(self.tokenizer.getNextToken(TOKEN_IDENTIFIER))
 				colon_token = self.tokenizer.getNextToken(TOKEN_COLON)
 				type_token = self.tokenizer.getNextToken()
 				if type_token.type not in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL, TOKEN_VARIABLE_TYPE_STRING]: # pragma: no cover
 					self.raiseParseError ("Expected variable type, got " + DEBUG_TOKENDISPLAY(type_token.type))
 				semi_token = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
 
-				type_token.value = ident_token.value
-				ret.children.append(AST(type_token))
+				for ident_token in ident_token_list:
+					variable_token = Token(type_token.type, ident_token.value )
+					ret.children.append(AST(variable_token))
 
 		return ret
 
