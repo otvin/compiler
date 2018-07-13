@@ -4,6 +4,8 @@ import os
 
 NUM_ATTEMPTS = 0
 NUM_SUCCESSES = 0
+TEST_FPC_INSTEAD = False  # switch to true to validate the .out files using fpc
+
 
 def dotest(infilename, resultfilename):
 	global NUM_ATTEMPTS
@@ -12,22 +14,27 @@ def dotest(infilename, resultfilename):
 	NUM_ATTEMPTS += 1
 
 	try:
-		assemblyfilename = infilename[:-4] + ".asm"
-		objectfilename = infilename[:-4] + ".o"
 		exefilename = infilename[:-4]
 		testoutputfilename = exefilename + ".testoutput"
 
-		f = open(infilename, "r")
-		t = compiler.Tokenizer(f.read())
-		f.close()
+		if not TEST_FPC_INSTEAD:
+			assemblyfilename = infilename[:-4] + ".asm"
+			objectfilename = infilename[:-4] + ".o"
 
-		p = compiler.Parser(t)
-		p.parse()
-		p.assemble(assemblyfilename)
-		c = asm_funcs.Compiler(assemblyfilename, objectfilename)
-		c.do_compile()
-		l = asm_funcs.Linker(objectfilename, exefilename)
-		l.do_link()
+			f = open(infilename, "r")
+			t = compiler.Tokenizer(f.read())
+			f.close()
+
+			p = compiler.Parser(t)
+			p.parse()
+			p.assemble(assemblyfilename)
+			c = asm_funcs.Compiler(assemblyfilename, objectfilename)
+			c.do_compile()
+			l = asm_funcs.Linker(objectfilename, exefilename)
+			l.do_link()
+
+		else:
+			os.system("fpc -v0 -o" + exefilename + " " + infilename)
 
 		os.system("./" + exefilename + " > " + testoutputfilename)
 
@@ -42,12 +49,16 @@ def dotest(infilename, resultfilename):
 
 
 		if resultvalue == testvalue:
-			print("PASS: " + infilename)
+			if not TEST_FPC_INSTEAD:
+				print("PASS: " + infilename)
+			else:
+				print("FPC PASS: " + infilename)
 			NUM_SUCCESSES += 1
 
 			# remove the files from passed tests; we will leave the files from failed tests so we can debug
-			os.system("rm " + assemblyfilename)
-			os.system("rm " + objectfilename)
+			if not TEST_FPC_INSTEAD:
+				os.system("rm " + assemblyfilename)
+				os.system("rm " + objectfilename)
 			os.system("rm " + exefilename)
 			os.system("rm " + testoutputfilename)
 
