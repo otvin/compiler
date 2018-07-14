@@ -1,12 +1,15 @@
 import os
 
 SYMBOLID = 0
+VALID_SYMBOL_LIST = []
 def NEXT_SYMBOLID():
 	global SYMBOLID
 	SYMBOLID += 1
 	return SYMBOLID
 def SymbolDef(display_string):
+	global VALID_SYMBOL_LIST
 	a = (NEXT_SYMBOLID(), display_string)
+	VALID_SYMBOL_LIST.append(a)
 	return a
 
 SYMBOL_FUNCTION = SymbolDef("FUNCTION")
@@ -80,6 +83,17 @@ class SymbolData:
 		self.type = type
 		self.label = label
 		self.procfuncheading = procFuncHeading
+
+	@property
+	def type(self):
+		return self.__type
+
+	@type.setter
+	def type(self, t):
+		if t in VALID_SYMBOL_LIST:
+			self.__type = t
+		else: # pragma: no cover
+			raise ValueError("Invalid Symbol Type")
 
 	def isPointer(self):
 		if self.type in [SYMBOL_INTEGER_PTR, SYMBOL_REAL_PTR, SYMBOL_STRING_PTR]:

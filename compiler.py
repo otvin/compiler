@@ -737,12 +737,10 @@ class AST():
 						if procFuncHeadingScope.localvariableSymbolTable.exists(childtoken.value):
 							found_symbol = True
 							childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
-							if childsymbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_REAL, asm_funcs.SYMBOL_STRING]:
-								assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-							elif childsymbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_REAL_PTR, asm_funcs.SYMBOL_STRING_PTR]:
+							if childsymbol.isPointer():
 								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
-							else:  # pragma: no cover
-								raise ValueError("Invalid symboltype")
+							else:
+								assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
 				if not found_symbol:
 					# must be a global variable
 					childsymbol = assembler.variable_symbol_table.get(childtoken.value)
@@ -1079,7 +1077,7 @@ class AST():
 							assembler.emitcode("MOV R11, " + symbol.label)
 							assembler.emitcode("MOVDQU XMM0, [R11]")
 						else: # pragma: no cover
-							raise ValueError ("Invalid Symbol Type")
+							raise ValueError ("Unhandled Symbol Type")
 				if found_symbol == False:
 					# Even though functions now copy their parameters to the stack, so there is no reason
 					# to check the parameter list, at some point we may optimize the code by only copying parameters
