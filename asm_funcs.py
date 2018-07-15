@@ -114,8 +114,6 @@ class SymbolTable:
 	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
 		if self.exists(symbolname): # pragma: no cover
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
-		if symboltype not in [SYMBOL_FUNCTION, SYMBOL_PROCEDURE, SYMBOL_REAL, SYMBOL_INTEGER, SYMBOL_REAL_PTR, SYMBOL_INTEGER_PTR, SYMBOL_STRING, SYMBOL_STRING_PTR, SYMBOL_CONCAT]: # pragma: no cover
-			raise ValueError ("Invalid symbol type")
 		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
 
 	def get(self, symbolname):
@@ -249,13 +247,7 @@ class Assembler:
 			raise ValueError("No literal for string :" + literalvalue)
 		else:
 			data_name = self.string_literals[literalvalue]
-			self.emitcode("push rdi")
-			self.emitcode("push rsi")
-			self.emitcode("mov rdi, " + stringaddress)
-			self.emitcode("mov rsi, " + data_name)
-			self.emitcode("call copyliteraltostring")
-			self.emitcode("pop rsi")
-			self.emitcode("pop rdi")
+			self.emit_copystring(stringaddress, data_name)
 
 	def emit_copystring(self, destinationstringaddress, sourcestringaddress):
 		self.emitcode("push rdi")
@@ -271,13 +263,7 @@ class Assembler:
 			raise ValueError("No literal for string :" + literalvalue)
 		else:
 			data_name = self.string_literals[literalvalue]
-			self.emitcode("push rdi")
-			self.emitcode("push rsi")
-			self.emitcode("mov rdi, " + stringaddress)
-			self.emitcode("mov rsi, " + data_name)
-			self.emitcode("call stringconcatliteral")
-			self.emitcode("pop rsi")
-			self.emitcode("pop rdi")
+			self.emit_stringconcatstring(stringaddress, data_name)
 
 	def emit_stringconcatstring(self, destinationstringaddress, sourcestringaddress):
 		self.emitcode("push rdi")
@@ -287,7 +273,6 @@ class Assembler:
 		self.emitcode("call stringconcatstring")
 		self.emitcode("pop rsi")
 		self.emitcode("pop rdi")
-
 
 	def setup_macros(self):
 		self.emitcode('%include "fredstringmacro.inc"')
@@ -307,7 +292,9 @@ class Assembler:
 		if len(self.string_literals.keys()) > 0 or len(self.real_literals.keys()) > 0:
 			self.emitsection("section .data")
 			for key in self.string_literals.keys():
-				self.emitcode(self.string_literals[key] + ' db `' + key.replace('`','\\`') + '`, 0')
+				if len(key) > 255: # pragma: no cover
+					raise ValueError("String literals must be 255 characters max.  Invalid literal: " + key)
+				self.emitcode(self.string_literals[key] + ' db ' + str(len(key)) + ',`' + key.replace('`','\\`') + '`, 0')
 			for key in self.real_literals.keys():
 				self.emitcode(self.real_literals[key] + ' dq ' + str(key))
 
@@ -315,7 +302,6 @@ class Assembler:
 		self.emitcode("global main")
 		self.emitcode("extern prtdec","imported from nsm64")
 		self.emitcode("extern prtdbl","imported from nsm64")
-		self.emitcode("extern prtstrz","imported from nsm64")
 		self.emitcode("extern newline","imported from nsm64")
 		self.emitcode("extern exit","imported from nsm64")
 
@@ -324,11 +310,8 @@ class Assembler:
 		self.emitcode("extern copystring","imported from fredstringfunc")
 		self.emitcode("extern printstring","imported from fredstringfunc")
 		self.emitcode("extern stringlength","imported from fredstringfunc")
-		self.emitcode("extern literaltostring","imported from fredstringfunc")
 		self.emitcode("extern stringconcatstring","imported from fredstringfunc")
-		self.emitcode("extern stringconcatliteral","imported from fredstringfunc")
 		self.emitcode("extern copystring", "imported from fredstringfunc")
-		self.emitcode("extern copyliteraltostring", "imported from fredstringfunc")
 
 		self.emitsection("section .text")
 

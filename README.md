@@ -100,7 +100,7 @@ Under the covers, the program first creates an Abstract Syntax Tree (AST) from t
 
 All Integers are 64-bit.  All Reals are 64-bit.  If an Integer is passed into a function for a Real parameter it will be converted to Real on the fly.  Similarly, arithmetic between an Integer and a Real will convert to a Real.  Trying to pass a Real into an Integer parameter however will result in a compile error.
 
-Strings can hold a maximum of 255 characters.  Exceeding that via a variable assignment of a longer string literal or a concat() statement will lead to runtime error.
+Strings can hold a maximum of 255 characters.  Exceeding that via a concat() statement will lead to runtime error.  Similarly, string literals canonly hold 255 characters.  Exceeding that will lead to a compile-time error.  String literals can be passed into functions/parameters that call for byval String parameters, but not byref parameters.
 
 ### To run it:
 
@@ -118,10 +118,6 @@ If a function takes a byRef integer and real parameters, and it is invoked from 
 Compiler does not provide a good error message when invoking a procedure as a parameter to a procedure or function, instead giving an error that "vartuple is not defined"
 
 Compiler does not error when invoking a function and ignoring the return value (basically treating a function like a procedure call).  This is not valid Pascal.  
-
-## Known limitations:
-
-Cannot pass in a string literal as a parameter to a procedure or function that takes a String parameter.
 
 ## Design limitation:
 

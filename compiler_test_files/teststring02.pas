@@ -1,9 +1,13 @@
 program teststring02;
-var hw:String;
+var hw:String;i:Integer;
 begin
   hw:='This will error after this line is printed.';
   writeln(hw);
 
-  hw:='This will error after this line is printed. 0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789';
+  i:=0;
+  while i < 255 do
+	begin
+		hw:=concat(hw,'*');
+	end;
   writeln(hw);
 end.

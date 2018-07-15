@@ -751,7 +751,7 @@ class AST():
 				# In general, arguments to procs/functions can be variables, literals, or other functions.  However,
 				# when passing a value byref, the only of those three that is acceptable is a variable.
 				if childtoken.type != TOKEN_VARIABLE_IDENTIFIER_FOR_EVALUATION:  # pragma: no cover
-					raise ValueError("Variable identifier expected in " + symbol.procfuncheading.name + '()')
+					raise ValueError("Variable identifier expected calling " + symbol.procfuncheading.name + '()')
 
 				intparams += 1  # all pointers are ints
 
@@ -820,6 +820,9 @@ class AST():
 			assembler.emitcode("MOV RAX, " + str(self.token.value))
 		elif self.token.type == TOKEN_REAL:
 			assembler.emitcode("MOVSD XMM0, [" + assembler.real_literals[self.token.value] + "]")
+		elif self.token.type == TOKEN_STRING_LITERAL:
+			data_name = assembler.string_literals[self.token.value]
+			assembler.emitcode("mov rax, " + data_name)
 		elif self.token.type in [TOKEN_PLUS, TOKEN_MINUS, TOKEN_MULT, TOKEN_DIV]:
 			self.assembleTwoChildrenForMathEvaluation(assembler, procFuncHeadingScope)
 			if self.expressiontype == EXPRESSIONTYPE_INT:
@@ -945,7 +948,7 @@ class AST():
 						data_name = assembler.string_literals[child.token.value]
 						assembler.emitcode("push rdi")
 						assembler.emitcode("mov rdi, " + data_name)
-						assembler.emitcode("call prtstrz")
+						assembler.emitcode("call printstring", "imported from fredstringfunc")
 						assembler.emitcode("pop rdi")
 				elif child.expressiontype == EXPRESSIONTYPE_STRING:
 					child.assemble(assembler, procFuncHeadingScope)  # the string result should be in RAX
@@ -1154,7 +1157,7 @@ class AST():
 
 
 class Tokenizer:
-	def __init__(self, text):  # todo - pull from file
+	def __init__(self, text):
 		self.curPos = 0
 		self.text = text
 		self.length = len(text)
@@ -1373,6 +1376,8 @@ class Tokenizer:
 					ret = Token(TOKEN_RELOP_LESSEQ, None)
 				else: # pragma: no cover
 					self.raiseTokenizeError("Unrecognized Token: " + sym)
+			else:  # pragma: no cover
+				self.raiseTokenizeError("Unrecognized Token: " + self.peek())
 
 			while self.peek().isspace():
 				if self.peek() == "\n":
