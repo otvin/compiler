@@ -2,12 +2,15 @@ import sys
 import asm_funcs
 
 TOKENID = 0
+VALID_TOKEN_LIST = []
 def NEXT_TOKENID():
 	global TOKENID
 	TOKENID += 1
 	return TOKENID
 def TokDef(display_string):
+	global VALID_TOKEN_LIST
 	a = (NEXT_TOKENID(), display_string)
+	VALID_TOKEN_LIST.append(a)
 	return a
 
 # constants for token types - give each token type unique id and a string to print when debugging.
@@ -69,12 +72,15 @@ def DEBUG_TOKENDISPLAY(tokentype): # pragma: no cover
 
 
 EXPRESSIONID = 0
+VALID_EXPRESSIONTYPE_LIST = []
 def NEXT_EXPRESSIONID():
 	global EXPRESSIONID
 	EXPRESSIONID += 1
 	return EXPRESSIONID
 def ExpressionDef(display_string):
+	global VALID_EXPRESSION_LIST
 	a = (NEXT_EXPRESSIONID(), display_string)
+	VALID_EXPRESSIONTYPE_LIST.append(a)
 	return a
 
 EXPRESSIONTYPE_NONE = ExpressionDef("")
@@ -159,6 +165,17 @@ class Token:
 	def __init__(self, type, value):
 		self.type = type
 		self.value = value
+
+	@property
+	def type(self):
+		return self.__type
+
+	@type.setter
+	def type(self, t):
+		if t in VALID_TOKEN_LIST:
+			self.__type = t
+		else: # pragma: no cover
+			raise ValueError("Invalid Token Type")
 
 	def isRelOp(self):
 		if self.type in [TOKEN_RELOP_EQUALS, TOKEN_RELOP_GREATER, TOKEN_RELOP_LESS, TOKEN_RELOP_GREATEREQ, TOKEN_RELOP_LESSEQ, TOKEN_RELOP_NOTEQ]:
@@ -263,6 +280,18 @@ class AST():
 		self.procFuncHeading = None  # only used for procs and funcs
 		self.expressiontype = EXPRESSIONTYPE_NONE # will be set during static type checking
 		self.children = []
+
+	@property
+	def expressiontype(self):
+		return self.__expressiontype
+
+	@expressiontype.setter
+	def expressiontype(self, et):
+		if et in VALID_EXPRESSIONTYPE_LIST:
+			self.__expressiontype = et
+		else: # pragma: no cover
+			raise ValueError("Invalid Expressiontype")
+
 
 	def rpn_print(self, level = 0): # pragma: no cover
 		for x in self.children:
