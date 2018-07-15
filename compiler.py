@@ -201,6 +201,19 @@ class ProcFuncParameter:
 		self.type = type  # will be a token variable type e.g. TOKEN_VARIABLE_TYPE_INTEGER
 		self.byref = byref # will be a boolean
 
+	@property
+	def type(self):
+		return self.__type
+
+	@type.setter
+	def type(self, t):
+		if t in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_STRING, TOKEN_VARIABLE_TYPE_REAL]:
+			self.__type = t
+		elif type(t) is Token: # pragma: no cover
+			raise ValueError("Invalid Parameter Type: " + t.debugprint())
+		else: # pragma: no cover
+			raise ValueError("Invalid Parameter Type: " + t)
+
 	def isIntegerParameterType(self):
 		# Section 3.2.3 of the ABI - defines the types of registers used to pass parameters
 		# Note: our implementation of ByVal Strings involves passing a reference and then copying
@@ -218,6 +231,23 @@ class ProcFuncHeading:
 		self.localvariableSymbolTable = None
 		self.returnAddress = None  # will be a string with an address offset, typically "[RBP-8]"
 		self.returntype = None  # will be a token variable type e.g. TOKEN_VARIABLE_TYPE_INTEGER
+
+	@property
+	def returntype(self):
+		return self.__returntype
+
+	@returntype.setter
+	def returntype(self, rt):
+		if rt is None:
+			self.__returntype = None
+		elif rt in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
+			self.__returntype = rt
+		elif type(rt) is Token: # pragma: no cover
+			raise ValueError("Invalid Return Type: " + rt.debugprint())
+		else: # pragma: no cover
+			raise ValueError("Invalid Return Type: " + rt)
+
+
 
 	def getParameterPos(self, paramName):
 		ret = None
@@ -457,14 +487,14 @@ class AST():
 					if self.token.type == TOKEN_VARIABLE_IDENTIFIER_FOR_ASSIGNMENT:
 						if self.token.value == parentProcFuncHeading.name:
 							foundit = True
-							if parentProcFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+							if parentProcFuncHeading.returntype == TOKEN_VARIABLE_TYPE_INTEGER:
 								self.expressiontype = EXPRESSIONTYPE_INT
 								for child in self.children:
 									if child.expressiontype == EXPRESSIONTYPE_REAL: # pragma: no cover
 										raise ValueError("Cannot assign real value as return type to function " + parentProcFuncHeading.name)
-							elif parentProcFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_REAL:
+							elif parentProcFuncHeading.returntype == TOKEN_VARIABLE_TYPE_REAL:
 								self.expressiontype = EXPRESSIONTYPE_REAL
-							elif parentProcFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_STRING:
+							elif parentProcFuncHeading.returntype == TOKEN_VARIABLE_TYPE_STRING:
 								self.expressiontype = EXPRESSIONTYPE_STRING
 							else: # pragma: no cover
 								raise ValueError("Invalid return type from function + " + parentProcFuncHeading.name)
@@ -496,11 +526,11 @@ class AST():
 				elif myvar.type == asm_funcs.SYMBOL_STRING:
 					self.expressiontype = EXPRESSIONTYPE_STRING
 				elif myvar.type == asm_funcs.SYMBOL_FUNCTION:
-					if myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+					if myvar.procfuncheading.returntype == TOKEN_VARIABLE_TYPE_INTEGER:
 						self.expressiontype = EXPRESSIONTYPE_INT
-					elif myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_REAL:
+					elif myvar.procfuncheading.returntype == TOKEN_VARIABLE_TYPE_REAL:
 						self.expressiontype = EXPRESSIONTYPE_REAL
-					elif myvar.procfuncheading.returntype.type == TOKEN_VARIABLE_TYPE_STRING:
+					elif myvar.procfuncheading.returntype == TOKEN_VARIABLE_TYPE_STRING:
 						self.expressiontype = EXPRESSIONTYPE_STRING
 					else: # pragma: no cover
 						raise ValueError ("Invalid Expression Type")
@@ -553,16 +583,16 @@ class AST():
 				# rax/xmm0 in betweeen, and can set it before the function ends.
 
 
-				if self.procFuncHeading.returntype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
+				if self.procFuncHeading.returntype in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
 					localvarbytesneeded += 8
 					self.procFuncHeading.resultAddress = '[RBP-' + str(localvarbytesneeded) + ']'
-				elif self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_STRING:
+				elif self.procFuncHeading.returntype == TOKEN_VARIABLE_TYPE_STRING:
 					# Per ABI - if a type has return class MEMORY, then the caller provides space for the return value and
 					# passes this address in RDI as if it were the first argument to the function.  Strings are greater than
 					# 4 eightbytes, so have return class MEMORY.
 					raise ValueError ("String return types not yet supported")
 				else: # pragma: no cover
-					raise ValueError ("Invalid return type for function : " + DEBUG_TOKENDISPLAY(self.procFuncHeading.returntype.type))
+					raise ValueError ("Unhandled return type for function")
 
 			self.procFuncHeading.localvariableSymbolTable = asm_funcs.SymbolTable()
 			for i in self.procFuncHeading.parameters:
@@ -672,7 +702,7 @@ class AST():
 
 			if self.token.type == TOKEN_FUNCTION:
 				# put the result in correct register
-				if self.procFuncHeading.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+				if self.procFuncHeading.returntype == TOKEN_VARIABLE_TYPE_INTEGER:
 					assembler.emitcode("MOV RAX, " + self.procFuncHeading.resultAddress)
 				else:
 					assembler.emitcode("MOVSD XMM0, " + self.procFuncHeading.resultAddress)
@@ -1080,7 +1110,7 @@ class AST():
 					if procFuncHeadingScope is not None:
 						if self.token.value == procFuncHeadingScope.name:
 							self.children[0].assemble(assembler, procFuncHeadingScope)  # Sets RAX or XMM0 to the value we return
-							if procFuncHeadingScope.returntype.type == TOKEN_VARIABLE_TYPE_INTEGER:
+							if procFuncHeadingScope.returntype == TOKEN_VARIABLE_TYPE_INTEGER:
 								assembler.emitcode("MOV " + procFuncHeadingScope.resultAddress + ", RAX")
 							else:
 								assembler.emitcode("MOVSD " + procFuncHeadingScope.resultAddress + ", XMM0")
@@ -1725,7 +1755,7 @@ class Parser:
 		colon = self.tokenizer.getNextToken(TOKEN_COLON)
 		functype = self.tokenizer.getNextToken()
 		if functype.type in [TOKEN_VARIABLE_TYPE_INTEGER, TOKEN_VARIABLE_TYPE_REAL]:
-			funcheading.returntype = functype
+			funcheading.returntype = functype.type
 		else:
 			self.raiseParseError("Expected Integer Function Return Type, got " + DEBUG_TOKENDISPLAY(functype.type)) # pragma: no cover
 		semicolon = self.tokenizer.getNextToken(TOKEN_SEMICOLON)
