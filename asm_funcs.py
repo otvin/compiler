@@ -79,9 +79,20 @@ def codeToASMComment(code):
 	return c2
 
 class SymbolData:
-	def __init__(self, type, label, procFuncHeading = None):
+	def __init__(self, type, global_label = None, local_rbp_offset = None, procFuncHeading = None):
+		# these need to be set up here because the setter below for global_label tests existence of local_rbp_offset
+		# which isn't defined yet until the next line.
+		self.__global_label = None
+		self.__local_rbp_offset = None
+
+		# the local_rbp_offset is a positive number, which represents the number of bytes that
+		# need to be subtracted from RBP to get to the location of the symbol.  E.G.
+		# local_rbp_offset equal to 8 means the symbol can be found at RBP-8.  When we get to
+		# passing parameters on the stack, we will use negative numbers to store that offset,
+		# e.g. -16 would be used for the value at RBP+16.
 		self.type = type
-		self.label = label
+		self.global_label = global_label
+		self.local_rbp_offset = local_rbp_offset
 		self.procfuncheading = procFuncHeading
 
 	@property
@@ -94,6 +105,57 @@ class SymbolData:
 			self.__type = t
 		else: # pragma: no cover
 			raise ValueError("Invalid Symbol Type")
+
+	@property
+	def global_label(self):
+		return self.__global_label
+
+	@global_label.setter
+	def global_label(self, g):
+		if g is None: # pragma: no cover
+			self.__global_label = g
+		elif not self.local_rbp_offset is None: # pragma: no cover
+			raise ValueError("Symbol cannot have both a global label and a local RBP offset")
+		else:
+			self.__global_label = g
+
+	@property
+	def local_rbp_offset(self):
+		return self.__local_rbp_offset
+
+	@local_rbp_offset.setter
+	def local_rbp_offset(self, l):
+		if l is None: # pragma: no cover
+			self.__local_rbp_offset = l
+		elif not self.global_label is None: # pragma: no cover
+			raise ValueError("Symbol cannot have both a local RBP offset and a global label")
+		else:
+			self.__local_rbp_offset = l
+
+	def as_address(self):
+		if not self.local_rbp_offset is None:
+			ret = "[RBP"
+			if self.local_rbp_offset > 0:
+				ret += '+'
+			ret += str(self.local_rbp_offset) + "]"
+		elif not self.global_label is None:
+			ret = "[" + self.global_label + "]"
+		else: # prgama: no cover
+			raise ValueError("Symbol has no address information")
+		return ret
+	
+	def as_value(self):
+		if not self.local_rbp_offset is None:
+			ret = "RBP"
+			if self.local_rbp_offset > 0:
+				ret += '+'
+			ret += str(self.local_rbp_offset)
+		elif not self.global_label is None:
+			ret = self.global_label
+		else: # pragma: no cover
+			raise ValueError("Symbol has no address information")
+		return ret
+	
 
 	def isPointer(self):
 		if self.type in [SYMBOL_INTEGER_PTR, SYMBOL_REAL_PTR, SYMBOL_STRING_PTR]:
@@ -111,10 +173,10 @@ class SymbolTable:
 		else:
 			return False
 
-	def insert(self, symbolname, symboltype, symbollabel, procFuncHeading = None):
+	def insert(self, symbolname, symboltype, symbol_global_label = None, symbol_rbp_offset=None, procFuncHeading = None):
 		if self.exists(symbolname): # pragma: no cover
 			raise ValueError ("Duplicate symbol inserted :" + symbolname)
-		self.symbols[symbolname] = SymbolData(symboltype, symbollabel, procFuncHeading)
+		self.symbols[symbolname] = SymbolData(symboltype, symbol_global_label, symbol_rbp_offset, procFuncHeading)
 
 	def get(self, symbolname):
 		if symbolname not in self.symbols: # pragma: no cover
@@ -283,9 +345,9 @@ class Assembler:
 			for key in self.variable_symbol_table.symbollist():
 				symbol = self.variable_symbol_table.get(key)
 				if symbol.type in [SYMBOL_INTEGER, SYMBOL_REAL, SYMBOL_STRING]:
-					self.emitcode(symbol.label + " resq 1", "global variable " + key)  # 8-byte / 64-bit int or float
+					self.emitcode(symbol.global_label + " resq 1", "global variable " + key)  # 8-byte / 64-bit int or float
 				elif symbol.type == SYMBOL_CONCAT:
-					self.emitcode(symbol.label + " resq 1", "global concat")
+					self.emitcode(symbol.global_label + " resq 1", "global concat")
 
 
 	def setup_data(self):
@@ -325,20 +387,20 @@ class Assembler:
 			symbol = self.variable_symbol_table.get(key)
 			if symbol.type == SYMBOL_CONCAT:
 				self.emitcode("NEWSTACKSTRING", "allocate stack space for concat " + key)
-				self.emitcode("mov [" + symbol.label + "], rax")
+				self.emitcode("mov " + symbol.as_address() + ", rax")
 		# need to init all the global string variables
 		for key in self.variable_symbol_table.symbollist():
 			symbol = self.variable_symbol_table.get(key)
 			if symbol.type == SYMBOL_STRING:
 				self.emitcode("call newstring","initialize String variable " + key)
-				self.emitcode("mov [" + symbol.label + "], rax")
+				self.emitcode("mov " + symbol.as_address() + ", rax")
 
 	def emit_terminate(self):
 		# need to free all the global string variables
 		for key in self.variable_symbol_table.symbollist():
 			symbol = self.variable_symbol_table.get(key)
 			if symbol.type == SYMBOL_STRING:
-				self.emitcode("mov rdi, [" + symbol.label + "]", "free String variable " + key)
+				self.emitcode("mov rdi, " + symbol.as_address(), "free String variable " + key)
 				self.emitcode("call freestring")
 		self.emitcode("call exit")
 

@@ -360,7 +360,7 @@ class AST():
 			# sometimes we use same assemble() code when it is a global var,
 			# so we always add the brackets when assembling.
 			self.token.value = 'fredconcat' + str(localvarbytesneeded)  # just needs to be unique
-			procFuncHeading.localvariableSymbolTable.insert(self.token.value, asm_funcs.SYMBOL_CONCAT, 'RBP - ' + str(localvarbytesneeded)) # RBP offset will come later
+			procFuncHeading.localvariableSymbolTable.insert(self.token.value, asm_funcs.SYMBOL_CONCAT, symbol_rbp_offset = (-1 * localvarbytesneeded))
 		for child in self.children:
 			localvarbytesneeded = child.find_procfunc_concats(localvarbytesneeded, procFuncHeading)
 
@@ -373,7 +373,7 @@ class AST():
 		if self.token.type == TOKEN_CONCAT:
 			concat_label = assembler.generate_variable_name("concat")
 			self.token.value = concat_label
-			assembler.variable_symbol_table.insert(concat_label, asm_funcs.SYMBOL_CONCAT, concat_label)
+			assembler.variable_symbol_table.insert(concat_label, asm_funcs.SYMBOL_CONCAT, symbol_global_label = concat_label)
 
 		# concat can take the results of a concat as a parameter, so we have to look within the
 		# children of the concat as well.  Thus, cannot do an "else" here.
@@ -387,27 +387,27 @@ class AST():
 			if self.token.value in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError ("Variable redefined: " + self.token.value)
 			else:
-				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_INTEGER, assembler.generate_variable_name('int'))
+				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_INTEGER, symbol_global_label = assembler.generate_variable_name('int'))
 		elif self.token.type == TOKEN_VARIABLE_TYPE_REAL:
 			if self.token.value in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError ("Variable redefined: " + self.token.value)
 			else:
-				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_REAL, assembler.generate_variable_name('real'))
+				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_REAL, symbol_global_label = assembler.generate_variable_name('real'))
 		elif self.token.type == TOKEN_VARIABLE_TYPE_STRING:
 			if self.token.value in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError ("Variable redefined: " + self.token.value)
 			else:
-				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_STRING, assembler.generate_variable_name('string'))
+				assembler.variable_symbol_table.insert(self.token.value, asm_funcs.SYMBOL_STRING, symbol_global_label = assembler.generate_variable_name('string'))
 		elif self.token.type == TOKEN_FUNCTION:
 			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist(): # pragma: no cover
 				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
 			else:
-				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_FUNCTION, assembler.generate_variable_name("func"), self.procFuncHeading)
+				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_FUNCTION, symbol_global_label = assembler.generate_variable_name("func"), procFuncHeading = self.procFuncHeading)
 		elif self.token.type == TOKEN_PROCEDURE:
 			if self.procFuncHeading.name in assembler.variable_symbol_table.symbollist():  # pragma: no cover
 				raise ValueError("Variable redefined: " + self.procFuncHeading.name)
 			else:
-				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_PROCEDURE, assembler.generate_variable_name("proc"), self.procFuncHeading)
+				assembler.variable_symbol_table.insert(self.procFuncHeading.name, asm_funcs.SYMBOL_PROCEDURE, symbol_global_label = assembler.generate_variable_name("proc"), procFuncHeading = self.procFuncHeading)
 		else:
 			for child in self.children:
 				child.find_global_variable_declarations(assembler)
@@ -559,7 +559,7 @@ class AST():
 				s = "procedure"
 
 			procfuncsymbol = assembler.variable_symbol_table.get(self.procFuncHeading.name)
-			assembler.emitlabel(procfuncsymbol.label, s + ": " + self.procFuncHeading.name)
+			assembler.emitlabel(procfuncsymbol.global_label, s + ": " + self.procFuncHeading.name)
 
 			# allocate space for local variables
 			# Also - if we referenced a parameter in the function as a parameter to another function,
@@ -614,7 +614,7 @@ class AST():
 						else:
 							symboltype = asm_funcs.SYMBOL_STRING
 
-					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, '[RBP-' + str(localvarbytesneeded) + ']')
+					self.procFuncHeading.localvariableSymbolTable.insert(i.name, symboltype, symbol_rbp_offset = (-1 * localvarbytesneeded))
 					assembler.emitcomment("Parameter: " + i.name + " = [RBP-" + str(localvarbytesneeded) + "]")
 				else: # pragma: no cover
 					raise ValueError ("Invalid variable type : " + DEBUG_TOKENDISPLAY(i.type))
@@ -633,7 +633,7 @@ class AST():
 
 					else: # pragma: no cover
 						raise ValueError ("Invalid variable type :" + DEBUG_TOKENDISPLAY(i.token.type))
-					self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, '[RBP - ' + str(localvarbytesneeded) + ']')
+					self.procFuncHeading.localvariableSymbolTable.insert(i.token.value, symboltype, symbol_rbp_offset = (-1 * localvarbytesneeded))
 					assembler.emitcomment("Variable: " + i.token.value + " = [RBP-" + str(localvarbytesneeded) + "]")
 
 			localvarbytesneeded = self.find_procfunc_concats(localvarbytesneeded, self.procFuncHeading)
@@ -644,24 +644,24 @@ class AST():
 				assembler.emitcode("SUB RSP, " + str(localvarbytesneeded), "allocate local storage")
 				numbyvalstringparameters = 0
 				for i in self.procFuncHeading.parameters:
-					paramlabel = self.procFuncHeading.localvariableSymbolTable.get(i.name).label
+					param_address = self.procFuncHeading.localvariableSymbolTable.get(i.name).as_address()
 					register = self.procFuncHeading.getRegisterForParameterName(i.name)
 					if i.type == TOKEN_VARIABLE_TYPE_INTEGER or i.byref:
-						assembler.emitcode("MOV " + paramlabel + ', ' + register, 'param: ' + i.name)
+						assembler.emitcode("MOV " + param_address + ', ' + register, 'param: ' + i.name)
 					elif i.type == TOKEN_VARIABLE_TYPE_REAL:
-						assembler.emitcode("MOVSD " + paramlabel + ', ' + register, 'param: ' + i.name)
+						assembler.emitcode("MOVSD " + param_address + ', ' + register, 'param: ' + i.name)
 					elif i.type == TOKEN_VARIABLE_TYPE_STRING:
 						if not i.byref:
 							numbyvalstringparameters += 1
 							assembler.emitcode("NEWSTACKSTRING","Allocate stack space for param " + i.name)
-							assembler.emitcode("MOV " + paramlabel + ", rax")
+							assembler.emitcode("MOV " + param_address + ", rax")
 
 				# setup the concats
 				for key in self.procFuncHeading.localvariableSymbolTable.symbollist():
 					symbol = self.procFuncHeading.localvariableSymbolTable.get(key)
 					if symbol.type == asm_funcs.SYMBOL_CONCAT:
 						assembler.emitcode("NEWSTACKSTRING")
-						assembler.emitcode("mov [" + symbol.label + "], rax")
+						assembler.emitcode("mov " + symbol.as_address() + ", rax")
 
 				assembler.emitcode('AND RSP, QWORD -16', '16-byte align stack pointer')
 
@@ -687,13 +687,13 @@ class AST():
 					for i in self.procFuncHeading.parameters:
 						if i.type == TOKEN_VARIABLE_TYPE_STRING:
 							if not i.byref:
-								paramlabel = self.procFuncHeading.localvariableSymbolTable.get(i.name).label
+								param_address = self.procFuncHeading.localvariableSymbolTable.get(i.name).as_address()
 								register = self.procFuncHeading.getRegisterForParameterName(i.name)
 								if register.lower() == "rdi":
 									register = "R12"
 								elif register.lower() == "rsi":
 									register = "R13"
-								assembler.emit_copystring(paramlabel, register)
+								assembler.emit_copystring(param_address, register)
 
 					assembler.emitcode("POP R13")
 					assembler.emitcode("POP R12")
@@ -797,13 +797,13 @@ class AST():
 							found_symbol = True
 							childsymbol = procFuncHeadingScope.localvariableSymbolTable.get(childtoken.value)
 							if childsymbol.isPointer():
-								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+								assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.as_address())
 							else:
-								assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+								assembler.emitcode("LEA " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.as_address())
 				if not found_symbol:
 					# must be a global variable
 					childsymbol = assembler.variable_symbol_table.get(childtoken.value)
-					assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.label)
+					assembler.emitcode("MOV " + asm_funcs.intParameterPositionToRegister(intparams) + "," + childsymbol.as_value())
 			else:
 				# If we are passing into a proc/function a value that itself is a pointer, then we
 				# need to dereference the pointer if it is being passed byval.  The assemble()
@@ -840,7 +840,7 @@ class AST():
 		if realparams > 0:
 			assembler.emitpopxmmreg("XMM0")
 
-		assembler.emitcode("CALL " + symbol.label, "invoke " + symbol.procfuncheading.name + '()')
+		assembler.emitcode("CALL " + symbol.as_value(), "invoke " + symbol.procfuncheading.name + '()')
 		assembler.restore_int_registers_after_procfunc_call(symbol.procfuncheading.getIntegerParameterCount())
 		assembler.restore_xmm_registers_after_procfunc_call(symbol.procfuncheading.getRealParameterCount())
 
@@ -1012,13 +1012,13 @@ class AST():
 					# a local variable, period, so we do not have to track that we found it and then back out to the global scope
 					# in case we did not find it locally and then search for it globally.
 					if not(procFuncHeadingScope.localvariableSymbolTable is None):
-						label = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).label
+						address = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value).as_address()
 					else: # pragma: no cover
 						raise ValueError("Error: Concat not properly found/allocated")
 				else:
-					label = self.token.value
+					address = "[" + self.token.value + "]"
 
-				assembler.emitcode("mov rax, [" + label + "]")
+				assembler.emitcode("mov rax, " + address)
 				assembler.emitcode("push rax")
 				child = self.children[0]
 				if child.token.type == TOKEN_STRING_LITERAL:
@@ -1060,17 +1060,17 @@ class AST():
 
 							if not symbol.isPointer():
 								if child.expressiontype == EXPRESSIONTYPE_INT:
-									assembler.emitcode("MOV " + symbol.label + ", RAX")
+									assembler.emitcode("MOV " + symbol.as_address() + ", RAX")
 								elif child.expressiontype == EXPRESSIONTYPE_REAL:
-									assembler.emitcode("MOVSD " + symbol.label + ", XMM0")
+									assembler.emitcode("MOVSD " + symbol.as_address() + ", XMM0")
 								else: # pragma: no cover
 									raise ValueError("Invalid expressiontype")
 							else:
 								if child.expressiontype == EXPRESSIONTYPE_INT:
-									assembler.emitcode("MOV R11, " + symbol.label)
+									assembler.emitcode("MOV R11, " + symbol.as_address())
 									assembler.emitcode("MOV [R11], RAX")
 								elif child.expressiontype == EXPRESSIONTYPE_REAL:
-									assembler.emitcode("MOV R11, " + symbol.label)
+									assembler.emitcode("MOV R11, " + symbol.as_address())
 									assembler.emitcode("MOVDQU [R11], XMM0")
 								else: # pragma: no cover
 									raise ValueError("Invalid expressiontype")
@@ -1079,13 +1079,13 @@ class AST():
 							# second, we are assigning from some other string expression.
 							if not symbol.isPointer():
 								if child.token.type == TOKEN_STRING_LITERAL:
-									assembler.emit_copyliteraltostring(symbol.label, child.token.value)
+									assembler.emit_copyliteraltostring(symbol.as_address(), child.token.value)
 								else:
 									child.assemble(assembler, procFuncHeadingScope) # RAX has the address of the resulting String
-									assembler.emit_copystring(symbol.label, "RAX")
+									assembler.emit_copystring(symbol.as_address(), "RAX")
 							else:
 								child.assemble(assembler, procFuncHeadingScope)
-								assembler.emitcode("MOV R11, " + symbol.label)
+								assembler.emitcode("MOV R11, " + symbol.as_address())
 								assembler.emit_copystring("[R11]", "RAX")
 
 			if found_symbol == False:
@@ -1093,19 +1093,19 @@ class AST():
 				symbol = assembler.variable_symbol_table.get(self.token.value)
 				if symbol.type == asm_funcs.SYMBOL_INTEGER:
 					self.children[0].assemble(assembler, procFuncHeadingScope) # RAX has the value
-					assembler.emitcode("MOV [" + symbol.label + "], RAX")
+					assembler.emitcode("MOV " + symbol.as_address() + ", RAX")
 				elif symbol.type == asm_funcs.SYMBOL_REAL:
 					self.children[0].assemble(assembler, procFuncHeadingScope) # XMM0 has the value
-					assembler.emitcode("MOVSD [" + symbol.label + "], XMM0")
+					assembler.emitcode("MOVSD " + symbol.as_address() + ", XMM0")
 				elif symbol.type == asm_funcs.SYMBOL_STRING:
 					# two options - first, we are assigning from a string literal.
 					# second, we are assigning from some other string expression.
 					child = self.children[0]
 					if child.token.type == TOKEN_STRING_LITERAL:
-						assembler.emit_copyliteraltostring("[" + symbol.label + "]", child.token.value)
+						assembler.emit_copyliteraltostring(symbol.as_address(), child.token.value)
 					else:
 						child.assemble(assembler, procFuncHeadingScope)  # Sets RAX pointing to the result
-						assembler.emit_copystring("[" + symbol.label + "]", "rax")
+						assembler.emit_copystring(symbol.as_address(), "rax")
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					if procFuncHeadingScope is not None:
 						if self.token.value == procFuncHeadingScope.name:
@@ -1129,14 +1129,14 @@ class AST():
 						found_symbol = True
 						symbol = procFuncHeadingScope.localvariableSymbolTable.get(self.token.value)
 						if symbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_STRING]:
-							assembler.emitcode("MOV RAX, " + symbol.label)
+							assembler.emitcode("MOV RAX, " + symbol.as_address())
 						elif symbol.type == asm_funcs.SYMBOL_REAL:
-							assembler.emitcode("MOVSD XMM0, " + symbol.label)
+							assembler.emitcode("MOVSD XMM0, " + symbol.as_address())
 						elif symbol.type in [asm_funcs.SYMBOL_INTEGER_PTR, asm_funcs.SYMBOL_STRING_PTR]:
-							assembler.emitcode("MOV R11, " + symbol.label)
+							assembler.emitcode("MOV R11, " + symbol.as_address())
 							assembler.emitcode("MOV RAX, [R11]")
 						elif symbol.type == asm_funcs.SYMBOL_REAL_PTR:
-							assembler.emitcode("MOV R11, " + symbol.label)
+							assembler.emitcode("MOV R11, " + symbol.as_address())
 							assembler.emitcode("MOVDQU XMM0, [R11]")
 						else: # pragma: no cover
 							raise ValueError ("Unhandled Symbol Type")
@@ -1160,9 +1160,9 @@ class AST():
 				# Check to see if it is a global variable
 				symbol = assembler.variable_symbol_table.get(self.token.value)
 				if symbol.type in [asm_funcs.SYMBOL_INTEGER, asm_funcs.SYMBOL_STRING]:
-					assembler.emitcode("MOV RAX, [" + symbol.label + "]")
+					assembler.emitcode("MOV RAX, " + symbol.as_address())
 				elif symbol.type == asm_funcs.SYMBOL_REAL:
-					assembler.emitcode("MOVSD XMM0, [" + symbol.label + "]")
+					assembler.emitcode("MOVSD XMM0, " + symbol.as_address())
 				elif symbol.type == asm_funcs.SYMBOL_FUNCTION:
 					# call the function - return value is in RAX or XMM0
 					self.assembleProcFuncInvocation(assembler, procFuncHeadingScope, symbol)
