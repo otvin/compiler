@@ -11,7 +11,7 @@ The compiler supports the following Pascal language features:
 * Math operations: addition, subtraction, multiplication, and floating point/integer division
   * When Real and Integer combined in an operation, result is a Real
 * Logical operators: equal to, not equal, less than, less than or equal, greater than, greater than or equal
-  * both Real and Integer
+  * both Real and Integer; however can only compare like types - cannot compare is a Real less than an Int, for example.
 * String Operators:
   * concat()
 * Procedures and Functions

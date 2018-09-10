@@ -541,8 +541,8 @@ class AST():
 				raise ValueError ("Invalid type right of relational op")
 			if etype0 != etype1: # pragma: no cover
 				errstr = "Left of " + DEBUG_TOKENDISPLAY(self.token.type) + " type "
-				errstr += etype0
-				errstr += ", right has type " + etype1
+				errstr += DEBUG_EXPRESSIONTYPEDISPLAY(etype0)
+				errstr += ", right has type " + DEBUG_EXPRESSIONTYPEDISPLAY(etype1)
 				raise ValueError (errstr)
 			self.expressiontype = etype0
 
