@@ -8,7 +8,7 @@ The compiler supports the following Pascal language features:
 * String literals
 * if - then [- else]
 * while - do
-* Math operations: addition, subtraction, multiplication, and floating point/integer division
+* Math operations: addition, subtraction, multiplication, floating point/integer division, and (integer) modulus
   * When Real and Integer combined in an operation, result is a Real
 * Logical operators: equal to, not equal, less than, less than or equal, greater than, greater than or equal
   * both Real and Integer; however can only compare like types - cannot compare is a Real less than an Int, for example.
@@ -78,7 +78,7 @@ Text in /* */ is a comment
 <letter> ::= "A" .. "Z" || "a" .. "z"
 <digit> ::= "0" .. "9"
 <addition operator> ::= "+" | "-"
-<multiplication operator> ::= "*" | "/", "DIV"
+<multiplication operator> ::= "*" | "/", "DIV", "MOD"
 <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 
 These aren't technically in the BNF.  Write/Writeln are just procedures.  Concat is just a function.  So these
@@ -90,7 +90,7 @@ aren't needed because the BNF covers them, however I wrote them out for my own b
 
 ```
  
-In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations and an optional set of procedure and function declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements, variable assignments, concat() invocations, function invocations, ```while/do``` blocks, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` or ```while``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, or after the ```do```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display string literals, variables, and mathematical expressions.  Addition, subtraction, multiplication, and both floating-point and integer division are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86-64 assembly, then compiles and links that into an executable.  No C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
+In other words, it takes a single ```program``` statement followed by an optional set of global variable declarations and an optional set of procedure and function declarations.  Then, it handles one```begin...end``` block which can have one or more ```writeln()``` or ```write()``` statements, variable assignments, concat() invocations, function invocations, ```while/do``` blocks, or ```if/then/else``` statements.  The valid conditional tests for an ```if``` or ```while``` statement are equality, inequality, greater, greater or equal, less than, and less than or equal.  After the ```then``` and ```else```, or after the ```do```, there may be a single statement or another ```begin...end``` block. Each ```writeln()``` or ```write()``` will display string literals, variables, and mathematical expressions.  Addition, subtraction, multiplication, both floating-point and integer division, and modulus are supported.  Standard order of operations applies, and parentheses can be used.  The unary minus is also supported, so e.g. ```-2 * 2``` will evaluate to -4.  The compiler generates valid x86-64 assembly, then compiles and links that into an executable.  Other than ```malloc()```, which is used to allocate memory for Strings, no C functions are invoked (e.g. printing to stdout uses syscalls, not a call to ```printf()```.)  
 
 The compiler will ignore comments between open and close curly braces ```{``` and ```}```, anywhere in the code.  So ``` 4 + {random comment} 2``` will evaluate to ```6```.
 

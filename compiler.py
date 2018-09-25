@@ -22,6 +22,7 @@ TOKEN_PLUS = TokDef("+")
 TOKEN_MINUS = TokDef("-")
 TOKEN_MULT = TokDef("*")
 TOKEN_IDIV = TokDef("DIV")
+TOKEN_MOD = TokDef("MOD")
 TOKEN_DIV = TokDef("/")
 TOKEN_LPAREN = TokDef("(")
 TOKEN_RPAREN = TokDef(")")
@@ -150,7 +151,7 @@ def isSymbol(char):
 # <letter> ::= "A" .. "Z" || "a" .. "z"
 # <digit> ::= "0" .. "9"
 # <addition operator> ::= "+" | "-"
-# <multiplication operator> ::= "*" | "/", "DIV"
+# <multiplication operator> ::= "*" | "/", "DIV", "MOD"
 # <relational operator> ::= "=", ">", ">=", "<", "<=", "<>"
 
 # These aren't technically in the BNF.  Write/Writeln are just procedures.  Concat is just a function.  So these
@@ -457,11 +458,11 @@ class AST():
 				self.expressiontype = EXPRESSIONTYPE_INT
 			else:
 				self.expressiontype = EXPRESSIONTYPE_REAL
-		elif self.token.type == TOKEN_IDIV:
+		elif self.token.type in [TOKEN_IDIV, TOKEN_MOD]:
 			if etype0 != EXPRESSIONTYPE_INT: # pragma: no cover
-				raise ValueError ("First operand of DIV must be an Integer.")
+				raise ValueError ("First operand of DIV or MOD must be an Integer.")
 			if etype1 != EXPRESSIONTYPE_INT: # pragma: no cover
-				raise ValueError ("Second operand of DIV must be an Integer.")
+				raise ValueError ("Second operand of DIV or MOD must be an Integer.")
 			self.expressiontype = EXPRESSIONTYPE_INT
 		elif self.token.type == TOKEN_DIV:
 			self.expressiontype = EXPRESSIONTYPE_REAL
@@ -877,7 +878,7 @@ class AST():
 					assembler.emitcode("DIVSD XMM8, XMM0")
 					assembler.emitcode("MOVSD XMM0, XMM8")
 
-		elif self.token.type == TOKEN_IDIV:
+		elif self.token.type in [TOKEN_IDIV, TOKEN_MOD]:
 			self.children[0].assemble(assembler, procFuncHeadingScope)
 			assembler.emitcode("PUSH RAX")
 			self.children[1].assemble(assembler, procFuncHeadingScope)
@@ -886,6 +887,8 @@ class AST():
 			assembler.emitcode("XOR RDX, RDX")  # RDX is concatenated with RAX to do division
 			assembler.emitcode("CQO") #extend RAX into RDX to handle idiv by negative numbers
 			assembler.emitcode("IDIV RCX")
+			if self.token.type == TOKEN_MOD:
+				assembler.emitcode("MOV RAX, RDX") # Remainder of IDIV is in RDX.
 		elif self.token.isRelOp():
 
 			self.assembleTwoChildrenForMathEvaluation(assembler, procFuncHeadingScope)
@@ -1353,6 +1356,8 @@ class Tokenizer:
 					ret = Token(TOKEN_VARIABLE_TYPE_STRING, None)
 				elif ident == "div":
 					ret = Token(TOKEN_IDIV, None)
+				elif ident == "mod":
+					ret = Token(TOKEN_MOD, None)
 				else:  # assume any other identifier is a variable; if inappropriate, it will throw an error later in parsing.
 					ret = Token(TOKEN_IDENTIFIER, ident)
 			elif self.peek().isdigit():
@@ -1511,7 +1516,7 @@ class Parser:
 	def parseTerm(self):
 		# <term> ::= <factor> { <multiplication operator> <factor> }
 		ret = self.parseFactor()
-		while self.tokenizer.peek() in ["*","/"] or self.tokenizer.peekMatchStringAndSpace("div"):
+		while self.tokenizer.peek() in ["*","/"] or self.tokenizer.peekMatchStringAndSpace("div") or self.tokenizer.peekMatchStringAndSpace("mod"):
 			multdiv = AST(self.tokenizer.getNextToken())
 			multdiv.children.append(ret)
 			nextchild = self.parseFactor()

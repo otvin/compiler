@@ -107,6 +107,7 @@ def main():
 	f = dotest("compiler_test_files/testmath01.pas", "compiler_test_files/testmath01.out")
 	f = dotest("compiler_test_files/testmath02.pas", "compiler_test_files/testmath02.out")
 	f = dotest("compiler_test_files/testmath03.pas", "compiler_test_files/testmath03.out")
+	f = dotest("compiler_test_files/testmath04.pas", "compiler_test_files/testmath04.out")
 	f = dotest("compiler_test_files/testproc01.pas", "compiler_test_files/testproc01.out")
 	f = dotest("compiler_test_files/testproc02.pas", "compiler_test_files/testproc02.out")
 	f = dotest("compiler_test_files/testproc03.pas", "compiler_test_files/testproc03.out")
