@@ -113,7 +113,7 @@ Execute ```python3 compiler_test.py```
 
 ### Known bugs:
 
-If a function takes a byRef integer and real parameters, and it is invoked from another function (not main) and the real parameter is updated, then the integer paramter value is wiped out.  See: ```compiler_test_files/known_bug1.pas```.  It should display 8 then 5, and actually displays 8 then 0.
+If a function takes a byRef integer and real parameters, and it is invoked from another function (not main) and the real parameter is updated, then the integer parameter value is wiped out.  See: ```compiler_test_files/known_bug1.pas```.  It should display 8 then 5, and actually displays 8 then 0.
 
 Compiler does not provide a good error message when invoking a procedure as a parameter to a procedure or function, instead giving an error that "vartuple is not defined"
 
